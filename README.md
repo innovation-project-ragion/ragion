@@ -50,11 +50,15 @@ Follow these steps to set up and run the application:
 ## Usage
 
     in case if you get the permission denied for multimodal_rag_app container please execute the following:
-    Linux Machine:
     
+    
+    
+    Linux Machine:
     ```bash
     chmod +x ./scripts/start-dev.sh
     ```
+    
+    Windows Machine:
 
 
 
