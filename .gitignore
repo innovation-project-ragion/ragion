@@ -157,3 +157,6 @@ volumes/*
 
 # add models folder to gitignore
 models/*
+
+## venv
+venv/*
