@@ -25,13 +25,13 @@ services:
     image: ghcr.io/open-webui/open-webui:ollama
     container_name: open_webui
     ports:
-      - "3000:8080"  # Expose the Open WebUI on port 3000
+      - "3001:8080"
     volumes:
       - open-webui:/app/backend/data  # Persist data for Open WebUI
       - ollama:/root/.ollama
     restart: always
     environment:
-      - OLLAMA_HOST=ollama
+      - OLLAMA_HOST=0.0.0.0
       - OLLAMA_PORT=11434
       - WEBUI_AUTH=true
       - OLLAMA_BASE_URL=http://ollama:11434
@@ -129,20 +129,20 @@ services:
       - minio
     networks:
       - app_network
+
   attu:
     image: zilliz/attu:latest
     container_name: attu
     ports:
-      - "8001:8001"
-      - "19532:19532"
+      - "3000:3000"
     environment:
-      - HOST_URL=http://172.21.0.8:8001
-      - MILVUS_HOST=standalone:19530
-      - MILVUS_PORT=19530
+      - MILVUS_URL=http://standalone:19530
     depends_on:
       - standalone
+    volumes:
+      - attu_data:/data  
     networks:
-        - app_network
+      - app_network
 
 volumes:
   open-webui:   # Volume for Open WebUI to store data
