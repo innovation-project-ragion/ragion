@@ -1,19 +1,25 @@
 services:
   app:
-    build: .
     container_name: multimodal_rag_app
     image: multimodal_rag_app
+    env_file:
+      - .env
+    build:
+        context: .
+        dockerfile: Dockerfile
     ports:
       - "8000:8000"
       - "5678:5678"
     volumes:
       - .:/src
-    networks:
-      - app_network
+    tty: true
     depends_on:
       - ollama
       - standalone
       - neo4j
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:ollama
@@ -27,7 +33,7 @@ services:
     environment:
       - OLLAMA_HOST=ollama
       - OLLAMA_PORT=11434
-      - WEBUI_AUTH=false
+      - WEBUI_AUTH=true
       - OLLAMA_BASE_URL=http://ollama:11434
     depends_on:
       - ollama  # Open WebUI depends on Ollama
@@ -102,7 +108,7 @@ services:
 
   standalone:
     container_name: milvus-standalone
-    image: milvusdb/milvus:v2.4.9
+    image: milvusdb/milvus:latest
     command: ["milvus", "run", "standalone"]
     environment:
       - ETCD_ENDPOINTS=${ETCD_ENDPOINTS}
@@ -123,6 +129,20 @@ services:
       - minio
     networks:
       - app_network
+  attu:
+    image: zilliz/attu:latest
+    container_name: attu
+    ports:
+      - "8001:8001"
+      - "19532:19532"
+    environment:
+      - HOST_URL=http://172.21.0.8:8001
+      - MILVUS_HOST=standalone:19530
+      - MILVUS_PORT=19530
+    depends_on:
+      - standalone
+    networks:
+        - app_network
 
 volumes:
   open-webui:   # Volume for Open WebUI to store data
@@ -131,6 +151,7 @@ volumes:
   etcd_data:    # Volume for etcd data
   minio_data:   # Volume for MinIO data
   milvus_data:  # Volume for Milvus data
+  attu_data:    # Volume for Attu data
 
 networks:
   app_network:

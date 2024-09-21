@@ -1,0 +1,22 @@
+# Python caches
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.env/
+
+# Git repository
+.git
+.gitignore
+
+# Docker files
+Dockerfile
+docker-compose.yml
+
+# Other unnecessary files
+*.md
+*.log
+*.swp
