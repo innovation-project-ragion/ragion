@@ -146,6 +146,19 @@ services:
     networks:
       - app_network
 
+  juptyer:
+    image: jupyter/datascience-notebook:latest
+    container_name: jupyter
+    ports:
+      - "8888:8888"
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - JUPYTER_TOKEN="adminpassword"
+    volumes:
+      - .:/home/jovyan/work
+    networks:
+      - app_network
+
 volumes:
   open-webui: # Volume for Open WebUI to store data
   ollama: # Volume for Ollama models
@@ -153,8 +166,9 @@ volumes:
   etcd_data: # Volume for etcd data
   minio_data: # Volume for MinIO data
   milvus_data: # Volume for Milvus data
-  attu_data:
-    # Volume for Attu data
+  attu_data: # Volume for Attu data
+  juptyer_data:
+
 
 networks:
   app_network:
