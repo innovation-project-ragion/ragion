@@ -153,7 +153,7 @@ services:
       - "8888:8888"
     environment:
       - JUPYTER_ENABLE_LAB=yes
-      - JUPYTER_TOKEN="adminpassword"
+      - JUPYTER_TOKEN=adminpassword
     volumes:
       - .:/home/jovyan/work
     networks:
