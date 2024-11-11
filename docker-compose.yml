@@ -23,6 +23,29 @@ services:
     networks:
       - app_network
 
+  streamlit_chat:
+    container_name: multimodal_rag_streamlit_chat
+    image: multimodal_rag_streamlit_chat
+    env_file:
+      - .env
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit_chat
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/src
+    tty: true
+    depends_on:
+      - ollama
+      - standalone
+      - neo4j
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    networks:
+      - app_network
+
   openwebui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open_webui
@@ -95,7 +118,7 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
     ports:
-      - "9001:9001"
+      - "9005:9005"
       - "9000:9000"
     volumes:
       - minio_data:/minio_data # Persist MinIO data
@@ -106,7 +129,7 @@ services:
       timeout: 20s
       retries: 3
     networks:
-      - app_network
+      - app_network4
 
   standalone:
     container_name: milvus-standalone
