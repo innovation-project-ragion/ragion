@@ -1,4 +1,4 @@
-# requirements.txt
+# Core RAG Dependencies
 pymilvus==2.4.7
 neo4j
 transformers==4.31.0
@@ -26,3 +26,20 @@ transformers
 torch
 numba
 setuptools==70.0.0
+
+# Authentication & Security
+bcrypt
+PyJWT
+
+# UI Dependencies
+streamlit>=1.31.0 
+streamlit-extras>=0.4.0 
+st-pages>=0.4.5  
+streamlit-option-menu>=0.3.6 
+watchdog 
+
+# File Handling
+python-magic  
+python-multipart 
+streamlit-chat
+requests
