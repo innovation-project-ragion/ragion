@@ -29,6 +29,10 @@ Follow these steps to set up and run the application:
     ```
 
 2. **Build and Start the Application:**
+    For local development create network:
+    ```bash
+    docker network create app_network
+    ```
 
     Using Docker Compose, you can build and start the application along with its dependencies (Milvus and Neo4j):
 

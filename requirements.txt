@@ -1,21 +1,45 @@
-# Core dependencies
-pymilvus==2.2.7
+# Core RAG Dependencies
+pymilvus==2.4.7
 neo4j
 transformers==4.31.0
 librosa==0.10.0
 torch==2.0.1
-
-# Web framework
 fastapi==0.100.0
 uvicorn==0.22.0
-
-# Additional dependencies
-pydantic==1.10.9
-httpx==0.24.0
-
-# Testing
+pydantic>=2.3.0
 pytest==7.4.0
 pytest-cov==4.1.0
-
-# For parsing and handling environment variables
 python-dotenv==1.0.0
+pydantic-settings==2.1.0
+langchain
+ollama==0.3.2
+pypdf
+langchainhub
+jina
+langchain-community
+langchain-experimental
+python-docx
+nltk
+numpy
+seaborn
+transformers
+torch
+numba
+setuptools==70.0.0
+
+# Authentication & Security
+bcrypt
+PyJWT
+
+# UI Dependencies
+streamlit>=1.31.0 
+streamlit-extras>=0.4.0 
+st-pages>=0.4.5  
+streamlit-option-menu>=0.3.6 
+watchdog 
+
+# File Handling
+python-magic  
+python-multipart 
+streamlit-chat
+requests

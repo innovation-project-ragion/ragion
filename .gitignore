@@ -154,3 +154,9 @@ pyrightconfig.json
 
 # add volumes folder to gitignore
 volumes/*
+
+# add models folder to gitignore
+models/*
+
+## venv
+venv/*
