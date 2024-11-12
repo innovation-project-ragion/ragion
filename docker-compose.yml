@@ -14,45 +14,19 @@ services:
       - .:/src
     tty: true
     depends_on:
-      - ollama
       - standalone
       - neo4j
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
-    networks:
-      - app_network
-
-  openwebui:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: open_webui
-    ports:
-      - "3001:8080"
-    volumes:
-      - open-webui:/app/backend/data # Persist data for Open WebUI
-      - ollama:/root/.ollama
-    restart: always
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-      - OLLAMA_PORT=11434
-      - WEBUI_AUTH=false
-      - OLLAMA_BASE_URL=http://ollama:11434
-    depends_on:
-      - ollama # Open WebUI depends on Ollama
-    networks:
-      - app_network
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama:/models
-    entrypoint: [ "ollama", "serve" ]
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-      - OLLAMA_PORT=11434
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     networks:
       - app_network
 
@@ -63,9 +37,9 @@ services:
       - "7474:7474" # Neo4j Browser
       - "7687:7687" # Neo4j Bolt protocol
     environment:
-      - NEO4J_AUTH=${NEO4J_AUTH} # Load Neo4j credentials from .env file
+      - NEO4J_AUTH=${NEO4J_AUTH}
     volumes:
-      - neo4j_data:/data # Persist Neo4j data
+      - neo4j_data:/data
     networks:
       - app_network
 
@@ -78,7 +52,7 @@ services:
       - ETCD_QUOTA_BACKEND_BYTES=4294967296
       - ETCD_SNAPSHOT_COUNT=50000
     volumes:
-      - etcd_data:/etcd # Persist etcd data
+      - etcd_data:/etcd
     command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
     healthcheck:
       test: [ "CMD", "etcdctl", "endpoint", "health" ]
@@ -98,7 +72,7 @@ services:
       - "9001:9001"
       - "9000:9000"
     volumes:
-      - minio_data:/minio_data # Persist MinIO data
+      - minio_data:/minio_data
     command: minio server /minio_data --console-address ":9001"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
@@ -116,7 +90,7 @@ services:
       - ETCD_ENDPOINTS=${ETCD_ENDPOINTS}
       - MINIO_ADDRESS=${MINIO_ADDRESS}
     volumes:
-      - milvus_data:/var/lib/milvus # Persist Milvus data
+      - milvus_data:/var/lib/milvus
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:9091/healthz" ]
       interval: 30s
@@ -124,8 +98,8 @@ services:
       timeout: 20s
       retries: 3
     ports:
-      - "19530:19530" # Milvus API port
-      - "9091:9091" # Milvus health check port
+      - "19530:19530"
+      - "9091:9091"
     depends_on:
       - etcd
       - minio
@@ -159,19 +133,24 @@ services:
       - JUPYTER_TOKEN=${JUPYTER_TOKEN}
     volumes:
       - .:/home/jovyan/work
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     networks:
       - app_network
 
 volumes:
-  open-webui: # Volume for Open WebUI to store data
-  ollama: # Volume for Ollama models
-  neo4j_data: # Volume for Neo4j data
-  etcd_data: # Volume for etcd data
-  minio_data: # Volume for MinIO data
-  milvus_data: # Volume for Milvus data
-  attu_data: # Volume for Attu data
+  neo4j_data:
+  etcd_data:
+  minio_data:
+  milvus_data:
+  attu_data:
   jupyter_data:
-
 
 networks:
   app_network:

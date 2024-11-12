@@ -1,9 +1,7 @@
-## Milvus connection and client creation
+# ragion/src/milvus/connector.py
 
 from pymilvus import connections
-from config import config
-
-from milvus.schema import create_document_collection
+from src.config import config
 
 class MilvusConnector:
 
@@ -18,23 +16,11 @@ class MilvusConnector:
                 host=config.MILVUS_HOST,
                 port=config.MILVUS_PORT
             )
-            print("Connected to Milvus at tcp://milvus-standalone:19530")
+            print(f"Connected to Milvus at {config.MILVUS_HOST}:{config.MILVUS_PORT}")
         except Exception as e:
-            print("Failed to connect to Milvus: {}".format(str(e)))
+            print(f"Failed to connect to Milvus: {str(e)}")
             raise e
-        
-    @staticmethod
-    def create_document_collection():
-        """
-        Create the document collection and load it to Milvus.
-        """
-        try:
-            collection = create_document_collection()
-            print(f"Collection {collection.name} is created!")
-        except Exception as e:
-            print(f"Failed to create collection: {str(e)}")
-            raise e        
-    
+
     @staticmethod
     def disconnect():
         """
@@ -44,9 +30,5 @@ class MilvusConnector:
             connections.disconnect(config.MILVUS_ALIAS)
             print("Disconnected from Milvus")
         except Exception as e:
-            print("Failed to disconnect from Milvus: {}".format(str(e)))
+            print(f"Failed to disconnect from Milvus: {str(e)}")
             raise e
-        
-
-
-       
