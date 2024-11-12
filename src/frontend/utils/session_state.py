@@ -1,6 +1,4 @@
-# 📁 src/frontend/utils/session_state.py
 import streamlit as st
-
 
 def init_session_state():
     """Initialize all session state variables"""
@@ -9,6 +7,8 @@ def init_session_state():
         st.session_state.messages = []
     if "chat_input_key" not in st.session_state:
         st.session_state.chat_input_key = 0
+    if "show_welcome" not in st.session_state:
+        st.session_state.show_welcome = True  # New flag for welcome message
 
     # Document-related states
     if "uploaded_files" not in st.session_state:
