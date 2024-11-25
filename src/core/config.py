@@ -1,13 +1,12 @@
 from pydantic_settings import BaseSettings
 from typing import List
-import os
 
 class Settings(BaseSettings):
     # API Settings
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "rag-backend"
-    HOST: str = os.getenv("HOST", "0.0.0.0")
-    PORT: int = int(os.getenv("PORT", "8000"))
+    HOST: str
+    PORT: int
     
     # CORS Settings
     BACKEND_CORS_ORIGINS: List[str] = [
@@ -17,13 +16,13 @@ class Settings(BaseSettings):
     ]
     
     # Milvus Settings
-    MILVUS_HOST: str = os.getenv("MILVUS_HOST", "standalone")
-    MILVUS_PORT: str = os.getenv("MILVUS_PORT", "19530")
+    MILVUS_HOST: str
+    MILVUS_PORT: int
     
     # Neo4j Settings
-    NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://neo4j:7687")
-    NEO4J_USER: str = os.getenv("NEO4J_USER", "neo4j")
-    NEO4J_PASSWORD: str = os.getenv("NEO4J_PASSWORD", "test")
+    NEO4J_HOST: str
+    NEO4J_PORT: int
+    NEO4J_AUTH: str
     
     # Model Settings
     MODEL_ID: str = "Finnish-NLP/llama-7b-finnish-instruct-v0.2"
@@ -33,24 +32,20 @@ class Settings(BaseSettings):
     
     # GPU Settings
     USE_GPU: bool = True
-    CUDA_VISIBLE_DEVICES: str = os.getenv("CUDA_VISIBLE_DEVICES", "0")
+    CUDA_VISIBLE_DEVICES: str
     
     # Cache Settings
-    CACHE_DIR: str = "/src/cache"  # Updated for container path
+    CACHE_DIR: str = "/src/cache"
     
     # Service Health Check Settings
     MILVUS_HEALTH_CHECK_INTERVAL: int = 30
     NEO4J_HEALTH_CHECK_INTERVAL: int = 30
 
-    MILVUS_HOST: str
-    MILVUS_PORT: int
-    NEO4J_HOST: str
-    NEO4J_PORT: int
+    # Other Settings
     MINIO_ACCESS_KEY: str
     MINIO_SECRET_KEY: str
     ETCD_ENDPOINTS: str
     MINIO_ADDRESS: str
-    NEO4J_AUTH: str
     JINA_AI_API_KEY: str
     SECRET_KEY: str
     FASTAPI_PORT: int
