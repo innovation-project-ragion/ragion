@@ -3,7 +3,7 @@ name: Deploy to Pouta VM
 on:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   deploy:
@@ -20,7 +20,7 @@ jobs:
 
       - name: Deploy to Pouta Server
         env:
-          SSH_HOST: ${{secrets.SSH_HOST}}
-          SSH_USER: ${{secrets.SSH_USER}}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
         run: |
-          ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST 'bash ./ragion/scripts/deploy.sh'
+          ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST 'bash ~/ragion/scripts/deploy.sh'
