@@ -9,8 +9,8 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
-      - "5678:5678"
+      - "8000:8000" # FastAPI port
+      - "8501:8501" # Streamlit port
     volumes:
       - .:/src
     tty: true
@@ -71,6 +71,7 @@ services:
       - ETCD_SNAPSHOT_COUNT=50000
     volumes:
       - etcd_data:/etcd
+      - etcd_data:/etcd
     command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
     healthcheck:
       test: [ "CMD", "etcdctl", "endpoint", "health" ]
@@ -87,9 +88,10 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
     ports:
-      - "9001:9001"
+      - "9005:9005"
       - "9000:9000"
     volumes:
+      - minio_data:/minio_data
       - minio_data:/minio_data
     command: minio server /minio_data --console-address ":9001"
     healthcheck:
@@ -110,6 +112,7 @@ services:
       - MILVUS-HOST=0.0.0.0
       - MILVUS_PORT=19530
     volumes:
+      - milvus_data:/var/lib/milvus
       - milvus_data:/var/lib/milvus
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:9091/healthz" ]

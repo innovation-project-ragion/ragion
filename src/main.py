@@ -1,3 +1,6 @@
+from fastapi import FastAPI
+from streamlit_chat import message
+app = FastAPI()
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from src.core.config import settings
@@ -19,6 +22,13 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
 
+# Simple health check
+#@app.get("/")
+#def hello_world():
+ #   return {"message": "Hello, World!"}
+
+message("My message")
+message("Hello bot!", is_user=True)
 # Set up CORS
 if settings.BACKEND_CORS_ORIGINS:
     app.add_middleware(

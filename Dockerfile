@@ -15,6 +15,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     libmagic-dev \
     libpq-dev \
     poppler-utils \
+    python3-dev \
+    libffi-dev \
     && apt-get clean \
     && rm -rf /var/cache/apt/* \
     && rm -rf /var/lib/apt/lists/*
@@ -39,6 +41,11 @@ COPY . .
 
 # Add /src/scripts to PATH
 ENV PATH="$PATH:/src/scripts"
+
+RUN chmod +x /src/scripts/start-dev.sh
+
+# Expose both ports
+EXPOSE 8000 8501
 
 # Command to start the application
 CMD ["./scripts/start-dev.sh"]
