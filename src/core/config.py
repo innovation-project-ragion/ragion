@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     NEO4J_HOST: str
     NEO4J_PORT: int
     NEO4J_AUTH: str
-    
+    NEO4J_URI: str
     # Model Settings
     MODEL_ID: str = "Finnish-NLP/llama-7b-finnish-instruct-v0.2"
     EMBEDDING_MODEL: str = "TurkuNLP/sbert-cased-finnish-paraphrase"
@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     PUHTI_USERNAME: str
     PUHTI_PROJECT: str
     
+    @property
+    def NEO4J_USER(self):
+        return self.NEO4J_AUTH.split("/")[0]
+    
+    @property
+    def NEO4J_PASSWORD(self):
+        return self.NEO4J_AUTH.split("/")[1]
     class Config:
         env_file = ".env"
         extra = "allow"
