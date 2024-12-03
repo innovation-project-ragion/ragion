@@ -160,3 +160,6 @@ models/*
 
 ## venv
 venv/*
+
+## cache folder
+cache/*

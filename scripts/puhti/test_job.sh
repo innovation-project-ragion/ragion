@@ -5,6 +5,7 @@
 #SBATCH --time=00:15:00
 #SBATCH --ntasks=1
 #SBATCH --mem=4G
+#SBATCH --gres=gpu:v100:1
 
 # Print some basic information
 echo "Running test job"
