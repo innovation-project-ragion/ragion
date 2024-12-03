@@ -163,3 +163,5 @@ venv/*
 
 ## cache folder
 cache/*
+## ssl folder
+ssl/*
