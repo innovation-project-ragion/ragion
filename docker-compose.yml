@@ -13,6 +13,7 @@ services:
       - "8501:8501" # Streamlit port
     volumes:
       - .:/src
+      - ~/.ssh:/root/.ssh:rw
     tty: true
     depends_on:
       - standalone

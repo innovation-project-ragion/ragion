@@ -128,3 +128,50 @@ class MilvusClient:
             logger.info("Closed Milvus connection")
         except Exception as e:
             logger.error(f"Error closing Milvus connection: {str(e)}")
+
+    async def insert_embeddings_from_puhti(self, embeddings, texts: list, metadata: dict):
+        """Insert embeddings and metadata from Puhti processing."""
+        try:
+            # Prepare entities for insertion
+            entities = []
+            for i, (embedding, text) in enumerate(zip(embeddings, texts)):
+                entities.append({
+                    "text": text,
+                    "embedding": embedding.tolist(), # Convert numpy array to list
+                    "person_name": metadata["person_name"],
+                    "person_age": metadata["person_age"],
+                    "document_id": metadata["document_id"],
+                    "chunk_index": i
+                })
+
+            # Insert into collection
+            self.collection.insert(entities)
+            # Force flush to ensure data is written
+            self.collection.flush()
+            
+            logger.info(
+                f"Successfully inserted {len(entities)} chunks for document {metadata['document_id']}"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to insert embeddings into Milvus: {str(e)}")
+            raise
+
+    def get_document_stats(self, document_id: str):
+        """Get statistics about stored document chunks."""
+        try:
+            expr = f'document_id == "{document_id}"'
+            stats = self.collection.query(
+                expr=expr,
+                output_fields=["person_name", "person_age", "chunk_index"]
+            )
+            return {
+                "document_id": document_id,
+                "chunk_count": len(stats),
+                "person_name": stats[0]["person_name"] if stats else None,
+                "person_age": stats[0]["person_age"] if stats else None
+            }
+        except Exception as e:
+            logger.error(f"Error getting document stats: {str(e)}")
+            raise

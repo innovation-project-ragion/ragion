@@ -54,7 +54,10 @@ class Settings(BaseSettings):
     ENVIRONMENT: str
     PUHTI_USERNAME: str
     PUHTI_PROJECT: str
-    
+    PUHTI_HOST: str = "puhti.csc.fi"
+    PUHTI_USERNAME: str = "safdarih"
+    PUHTI_PROJECT: str = "project_2011638"
+    SSH_KEY_PATH: str = "/root/.ssh/id_rsa"
     @property
     def NEO4J_USER(self):
         return self.NEO4J_AUTH.split("/")[0]
