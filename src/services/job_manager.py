@@ -173,6 +173,7 @@ class PuhtiJobManager:
     #         logger.error(f"Failed to check embedding job: {str(e)}")
     #         raise
     async def submit_embedding_job(self, file_path: Path) -> Tuple[str, Dict]:
+        """Submit document embedding job and return job ID and metadata."""
         try:
             await self.connect()
             
@@ -180,12 +181,19 @@ class PuhtiJobManager:
             metadata = self.metadata_extractor.extract_from_filename(file_path.name)
             job_id = str(uuid.uuid4())
             
-            # Prepare remote paths - using document ID in filename
+            # Prepare remote paths
             remote_filename = f"{metadata['document_id']}_{file_path.name}"
             remote_file_path = self.work_dir / remote_filename
             
             # Transfer document file
             sftp = self.ssh_client.open_sftp()
+            try:
+                # Ensure directory exists
+                sftp.stat(str(self.work_dir))
+            except FileNotFoundError:
+                sftp.mkdir(str(self.work_dir))
+                
+            # Transfer files
             sftp.put(str(file_path), str(remote_file_path))
             
             # Generate and transfer batch script
@@ -216,13 +224,68 @@ class PuhtiJobManager:
         except Exception as e:
             logger.error(f"Failed to submit embedding job: {str(e)}")
             raise
-    async def _ensure_remote_dirs(self, sftp):
-        """Ensure remote directories exist."""
-        for path in [self.input_path, self.output_path]:
-            try:
-                sftp.stat(str(path))
-            except FileNotFoundError:
-                sftp.mkdir(str(path))
+    
+    async def check_embedding_job(self, job_id: str) -> Dict:
+        """Check job status and retrieve results if complete."""
+        try:
+            job_info = self.jobs.get(job_id)
+            if not job_info:
+                raise ValueError(f"No job found for ID {job_id}")
+                
+            await self.connect()
+            
+            # Check job status
+            stdin, stdout, stderr = self.ssh_client.exec_command(
+                f'squeue -j {job_info["slurm_job_id"]} -h'
+            )
+            job_status = stdout.read().decode().strip()
+            
+            if not job_status:  # Job completed
+                sftp = self.ssh_client.open_sftp()
+                document_id = job_info["metadata"]["document_id"]
+                
+                # Check for output files in work directory
+                embedding_path = self.work_dir / f"embeddings_{document_id}_{job_info['metadata']['person_name']} {job_info['metadata']['person_age']}v {document_id}.pt"
+                texts_path = self.work_dir / f"texts_{document_id}_{job_info['metadata']['person_name']} {job_info['metadata']['person_age']}v {document_id}.json"
+                
+                try:
+                    # Download results
+                    local_embedding_path = Path(f"/tmp/embeddings_{job_id}.pt")
+                    local_texts_path = Path(f"/tmp/texts_{job_id}.json")
+                    
+                    sftp.get(str(embedding_path), str(local_embedding_path))
+                    sftp.get(str(texts_path), str(local_texts_path))
+                    
+                    # Load results
+                    embeddings = torch.load(str(local_embedding_path))
+                    with open(local_texts_path) as f:
+                        texts = json.load(f)["texts"]
+                    
+                    # Clean up local files
+                    local_embedding_path.unlink()
+                    local_texts_path.unlink()
+                    
+                    self.jobs[job_id].update({
+                        "status": "COMPLETED",
+                        "embeddings": embeddings.numpy(),
+                        "texts": texts
+                    })
+                    
+                except FileNotFoundError as e:
+                    logger.error(f"Missing output files: {str(e)}")
+                    self.jobs[job_id]["status"] = "FAILED"
+                except Exception as e:
+                    logger.error(f"Error processing results: {str(e)}")
+                    self.jobs[job_id]["status"] = "FAILED"
+            else:
+                self.jobs[job_id]["status"] = "RUNNING"
+            
+            return self.jobs[job_id]
+            
+        except Exception as e:
+            logger.error(f"Failed to check embedding job: {str(e)}")
+            raise
+
 
     async def _generate_batch_script(self, job_name: str, input_path: str) -> Path:
         """Generate a batch script for embedding generation."""
