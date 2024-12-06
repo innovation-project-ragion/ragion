@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # Model Settings
     MODEL_ID: str = "Finnish-NLP/llama-7b-finnish-instruct-v0.2"
     EMBEDDING_MODEL: str = "TurkuNLP/sbert-cased-finnish-paraphrase"
-    EMBEDDING_DIM: int = 1536
+    EMBEDDING_DIM: int = 768
     MAX_TOKENS: int = 2048
     
     # GPU Settings

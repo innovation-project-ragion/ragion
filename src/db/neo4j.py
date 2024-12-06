@@ -50,6 +50,37 @@ class Neo4jClient:
         except Exception as e:
             logger.error(f"Error finding mentioned persons: {str(e)}")
             return []
+    
+    async def create_document_chunk(self, document_id: str, text: str, person_name: str, chunk_index: int):
+        """Create a document chunk node and link it to a person."""
+        try:
+            with self.driver.session() as session:
+                # Create document chunk and link to person in a single transaction
+                session.run("""
+                    MATCH (p:Person {name: $person_name})
+                    MERGE (d:Document {id: $doc_id})
+                    SET d.content = $text,
+                        d.chunk_index = $chunk_index
+                    MERGE (p)-[:APPEARS_IN]->(d)
+                    
+                    // Create relationships between chunks from same document
+                    WITH d
+                    MATCH (other:Document)
+                    WHERE other.id <> $doc_id 
+                    AND other.id STARTS WITH split($doc_id, '_')[0]
+                    MERGE (d)-[:NEXT_CHUNK]->(other)
+                """, {
+                    "doc_id": document_id,
+                    "text": text,
+                    "person_name": person_name,
+                    "chunk_index": chunk_index
+                })
+                
+                logger.info(f"Created document chunk: {document_id} for person: {person_name}")
+                
+        except Exception as e:
+            logger.error(f"Error creating document chunk: {str(e)}")
+            raise
 
     async def get_person_context(self, person_name: str):
         """Get comprehensive context for a person."""
@@ -59,12 +90,12 @@ class Neo4jClient:
                     MATCH (p:Person {name: $name})
                     OPTIONAL MATCH (p)-[r]->(d:Document)
                     OPTIONAL MATCH (p)-[rel:APPEARS_IN]->(doc:Document)
-                    
+                        
                     WITH p,
-                         COLLECT(DISTINCT type(r)) as relationship_types,
-                         COUNT(DISTINCT doc) as doc_count,
-                         p.age as age
-                    
+                        COLLECT(DISTINCT type(r)) as relationship_types,
+                        COUNT(DISTINCT doc) as doc_count,
+                        p.age as age
+                        
                     RETURN {
                         name: p.name,
                         age: age,
@@ -72,13 +103,26 @@ class Neo4jClient:
                         document_count: doc_count
                     } as context
                 """, name=person_name)
-                
+                    
                 record = result.single()
                 return record["context"] if record else None
-                
+                    
         except Exception as e:
             logger.error(f"Error getting person context: {str(e)}")
             return None
+        
+    async def create_person(self, name: str, age: int = None):
+        """Create a new Person node in the Neo4j database."""
+        try:
+            with self.driver.session() as session:
+                session.run("""
+                    MERGE (p:Person {name: $name})
+                    ON CREATE SET p.age = $age
+                """, name=name, age=age)
+                logger.info(f"Created or updated person: {name}")
+        except Exception as e:
+            logger.error(f"Error creating person: {str(e)}")
+            raise
 
     async def get_context(self, question: str, mentioned_persons: list = None):
         """Get context from Neo4j for a question."""
