@@ -1,12 +1,14 @@
-# query_service.py
-from typing import Dict, List
+# src/services/query_service.py
+from typing import Dict, List, Optional
 import logging
 from pathlib import Path
 import json
+import aiofiles
 from .job_manager import PuhtiJobManager
 from ..db.milvus import MilvusClient
 from ..db.neo4j import Neo4jClient
 from .embedding_service import EmbeddingService
+from src.models.query import CompletedQueryResponse, PersonContext, QueryResponse, QuerySource, InitialQueryResponse
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +17,103 @@ class QueryService:
         self.embedding_service = EmbeddingService()
         self.puhti_job_manager = PuhtiJobManager()
         self.query_path = Path("/scratch/project_2011638/rag_queries")
+        self.local_results_path = Path("./results")
+        self.local_results_path.mkdir(exist_ok=True)
+
+    async def _ensure_query_dirs(self):
+        """Ensure query directories exist on both Puhti and locally."""
+        try:
+            # Create Puhti directories through SSH
+            await self.puhti_job_manager.connect()
+            sftp = self.puhti_job_manager.ssh_client.open_sftp()
+            
+            # Create base directory first
+            try:
+                sftp.stat(str(self.query_path))
+            except FileNotFoundError:
+                logger.info(f"Creating base directory: {self.query_path}")
+                sftp.mkdir(str(self.query_path))
+            
+            # Create subdirectories
+            for subdir in ['inputs', 'outputs']:
+                dir_path = self.query_path / subdir
+                try:
+                    sftp.stat(str(dir_path))
+                except FileNotFoundError:
+                    logger.info(f"Creating subdirectory: {dir_path}")
+                    sftp.mkdir(str(dir_path))
+            
+            # Create local results directory
+            self.local_results_path.mkdir(parents=True, exist_ok=True)
+            (self.local_results_path / "cache").mkdir(exist_ok=True)
+            
+            logger.info("All required directories created successfully")
+            
+        except Exception as e:
+            logger.error(f"Error ensuring query directories: {str(e)}")
+            raise
+    
+    async def _retrieve_answer(self, job_id: str) -> Optional[CompletedQueryResponse]:
+        """Retrieve and parse answer from Puhti."""
+        try:
+            sftp = self.puhti_job_manager.ssh_client.open_sftp()
+            remote_path = self.query_path / "outputs" / f"response_{job_id}.json"
+            local_cache_path = self.local_results_path / "cache" / f"{job_id}.json"
+
+            try:
+                # Download result
+                sftp.get(str(remote_path), str(local_cache_path))
+                
+                # Parse result
+                async with aiofiles.open(local_cache_path, 'r') as f:
+                    content = await f.read()
+                    data = json.loads(content)
+                
+                # Convert to CompletedQueryResponse format
+                sources = [
+                    QuerySource(
+                        text=source["text"],
+                        document_id=source["document_id"],
+                        score=source.get("score", 0.0)
+                    )
+                    for source in data.get("sources", [])
+                ]
+                
+                person_contexts = [
+                    PersonContext(
+                        name=ctx["name"],
+                        age=ctx.get("age"),
+                        relationships=ctx.get("relationships", []),
+                        document_count=ctx.get("document_count", 0)
+                    )
+                    for ctx in data.get("person_contexts", [])
+                ]
+                
+                result = CompletedQueryResponse(
+                    query=data["query"],
+                    answer=data["response"],
+                    sources=sources,
+                    person_contexts=person_contexts,
+                    confidence=data.get("confidence", 0.0)
+                )
+                
+                # Clean up remote files
+                sftp.remove(str(remote_path))
+                input_path = self.query_path / "inputs" / f"query_{job_id}.json"
+                try:
+                    sftp.remove(str(input_path))
+                except FileNotFoundError:
+                    pass
+                
+                return result
+                
+            except FileNotFoundError:
+                logger.warning(f"Results not yet available for job {job_id}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error retrieving answer: {str(e)}")
+            raise
 
     async def process_query(
         self, 
@@ -22,13 +121,15 @@ class QueryService:
         milvus_client: MilvusClient,
         neo4j_client: Neo4jClient,
         max_tokens: int = 300
-    ) -> Dict:
-        """Process a query through the RAG pipeline."""
+    ) -> QueryResponse:
+        """Process a query through the RAG pipeline with organized storage."""
         milvus_results = []
         person_contexts = []
         mentioned_persons = []
         
         try:
+            # Ensure query directories exist
+            await self._ensure_query_dirs()
             logger.info(f"Processing query: {query}")
             
             # 1. Generate query embedding locally
@@ -36,11 +137,12 @@ class QueryService:
                 query_embedding = await self.embedding_service.generate_embedding(query)
                 logger.info("Generated query embedding")
             except Exception as e:
-                return {
-                    "status": "error",
-                    "message": "Failed to generate query embedding",
-                    "error": str(e)
-                }
+                logger.error(f"Embedding generation failed: {str(e)}")
+                return InitialQueryResponse(
+                    status="error",
+                    message="Failed to generate query embedding",
+                    error=str(e)
+                )
             
             # 2. Search Milvus
             try:
@@ -50,15 +152,18 @@ class QueryService:
                 )
                 logger.info(f"Found {len(milvus_results)} relevant passages in Milvus")
             except Exception as e:
-                return {
-                    "status": "error",
-                    "message": "Failed to search knowledge base",
-                    "error": str(e),
-                    "data": {
+                logger.error(f"Milvus search failed: {str(e)}")
+                return InitialQueryResponse(
+                    status="error",
+                    message="Failed to search knowledge base",
+                    error=str(e),
+                    data={
                         "milvus_hits": 0,
-                        "person_contexts": 0
+                        "person_contexts": 0,
+                        "mentioned_persons": [],
+                        "context_length": 0
                     }
-                }
+                )
             
             # 3. Get Neo4j context
             try:
@@ -70,29 +175,49 @@ class QueryService:
                             person_contexts.append(context)
                 logger.info(f"Found {len(person_contexts)} person contexts in Neo4j")
             except Exception as e:
-                logger.error(f"Neo4j error: {str(e)}")
+                logger.warning(f"Neo4j context retrieval failed: {str(e)}")
                 # Continue without Neo4j context
-                pass
-            
+                
             # 4. Prepare context for LLM
             try:
                 context = self._prepare_context(milvus_results, person_contexts)
             except Exception as e:
-                return {
-                    "status": "error",
-                    "message": "Failed to prepare context",
-                    "error": str(e),
-                    "data": {
+                logger.error(f"Context preparation failed: {str(e)}")
+                return InitialQueryResponse(
+                    status="error",
+                    message="Failed to prepare context",
+                    error=str(e),
+                    data={
                         "milvus_hits": len(milvus_results),
-                        "person_contexts": len(person_contexts)
+                        "person_contexts": len(person_contexts),
+                        "mentioned_persons": mentioned_persons,
+                        "context_length": 0
                     }
-                }
+                )
             
             # 5. Submit LLM job to Puhti
             try:
+                # Prepare input data with sources for later reference
                 input_data = {
                     "query": query,
                     "context": context,
+                    "sources": [
+                        {
+                            "text": result["text"],
+                            "document_id": result["document_id"],
+                            "score": result.get("score", 0.0)
+                        }
+                        for result in milvus_results
+                    ],
+                    "person_contexts": [
+                        {
+                            "name": ctx["name"],
+                            "age": ctx.get("age"),
+                            "relationships": ctx.get("relationships", []),
+                            "document_count": ctx.get("document_count", 0)
+                        }
+                        for ctx in person_contexts
+                    ],
                     "params": {
                         "max_tokens": max_tokens,
                         "temperature": 0.1,
@@ -100,59 +225,68 @@ class QueryService:
                     }
                 }
                 
-                job_id = await self.puhti_job_manager.submit_llm_job(input_data)
+                # Submit job to organized directories
+                job_id = await self.puhti_job_manager.submit_llm_job(
+                    input_data=input_data,
+                    input_dir=self.query_path / "inputs",
+                    output_dir=self.query_path / "outputs"
+                )
                 
                 if not job_id:
-                    return {
-                        "status": "error",
-                        "message": "Failed to get job ID from Puhti",
-                        "data": {
+                    logger.error("Failed to get job ID from Puhti")
+                    return InitialQueryResponse(
+                        status="error",
+                        message="Failed to get job ID from Puhti",
+                        data={
                             "milvus_hits": len(milvus_results),
                             "person_contexts": len(person_contexts),
-                            "mentioned_persons": mentioned_persons
+                            "mentioned_persons": mentioned_persons,
+                            "context_length": len(context.split())
                         }
-                    }
+                    )
                     
                 logger.info(f"Submitted LLM job: {job_id}")
                 
-                # 6. Return successful response
-                return {
-                    "status": "processing",
-                    "message": "Query is being processed",
-                    "job_id": job_id,  # Ensure job_id is included
-                    "data": {
+                # Return successful response
+                return InitialQueryResponse(
+                    status="processing",
+                    message="Query is being processed",
+                    job_id=job_id,
+                    data={
                         "milvus_hits": len(milvus_results),
                         "person_contexts": len(person_contexts),
                         "mentioned_persons": mentioned_persons,
                         "context_length": len(context.split())
                     }
-                }
+                )
                 
             except Exception as e:
                 logger.error(f"Error submitting LLM job: {str(e)}")
-                return {
-                    "status": "error",
-                    "message": "Failed to submit processing job",
-                    "error": str(e),
-                    "data": {
+                return InitialQueryResponse(
+                    status="error",
+                    message="Failed to submit processing job",
+                    error=str(e),
+                    data={
                         "milvus_hits": len(milvus_results),
                         "person_contexts": len(person_contexts),
-                        "mentioned_persons": mentioned_persons
+                        "mentioned_persons": mentioned_persons,
+                        "context_length": len(context.split()) if context else 0
                     }
-                }
+                )
                 
         except Exception as e:
             logger.error(f"Unexpected error in process_query: {str(e)}")
-            return {
-                "status": "error",
-                "message": "An unexpected error occurred",
-                "error": str(e),
-                "data": {
+            return InitialQueryResponse(
+                status="error",
+                message="An unexpected error occurred",
+                error=str(e),
+                data={
                     "milvus_hits": len(milvus_results),
                     "person_contexts": len(person_contexts),
-                    "mentioned_persons": mentioned_persons
+                    "mentioned_persons": mentioned_persons,
+                    "context_length": 0
                 }
-            }
+            )
 
     def _prepare_context(self, milvus_results: List[Dict], person_contexts: List[Dict]) -> str:
         """Prepare context for LLM."""

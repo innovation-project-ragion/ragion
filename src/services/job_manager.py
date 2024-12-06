@@ -327,8 +327,14 @@ python {self.script_path} --input '{input_path}'
             logger.error(f"Error checking job slots: {str(e)}")
             return False
     
-    async def submit_llm_job(self, input_data: Dict, max_retries: int = 3) -> str:
-        """Submit LLM generation job to Puhti with retries."""
+    async def submit_llm_job(
+        self, 
+        input_data: Dict, 
+        input_dir: Path,
+        output_dir: Path,
+        max_retries: int = 3
+    ) -> str:
+        """Submit LLM generation job to Puhti with retries and organized directories."""
         try:
             # First ensure we have a connection
             await self.connect()
@@ -351,30 +357,32 @@ python {self.script_path} --input '{input_path}'
 
                     job_id = str(uuid.uuid4())
                     
-                    # Prepare input files
-                    input_filename = f"llm_input_{job_id}.json"
-                    input_path = self.work_dir / input_filename
+                    # Prepare input files using organized directories
+                    input_filename = f"query_{job_id}.json"
+                    input_path = input_dir / input_filename
                     logger.info(f"Input file path: {input_path}")
                     
-                    # Transfer input data
+                    # Ensure directories exist
                     sftp = self.ssh_client.open_sftp()
-                    try:
-                        sftp.stat(str(self.work_dir))
-                    except FileNotFoundError:
-                        logger.info(f"Creating work directory: {self.work_dir}")
-                        sftp.mkdir(str(self.work_dir))
+                    for dir_path in [input_dir, output_dir]:
+                        try:
+                            sftp.stat(str(dir_path))
+                        except FileNotFoundError:
+                            logger.info(f"Creating directory: {dir_path}")
+                            sftp.mkdir(str(dir_path))
                     
-                    # Write input data
+                    # Write input data to organized location
                     logger.info(f"Writing input data to {input_path}")
                     with sftp.open(str(input_path), 'w') as f:
                         json.dump(input_data, f, ensure_ascii=False, indent=2)
                     
-                    # Generate batch script
+                    # Generate batch script with updated paths
                     batch_script = await self._generate_llm_batch_script(
                         job_name=f"llm_{job_id}",
-                        input_path=str(input_path)
+                        input_path=str(input_path),
+                        output_dir=str(output_dir)
                     )
-                    script_path = self.work_dir / f"job_llm_{job_id}.sh"
+                    script_path = input_dir / f"job_llm_{job_id}.sh"
                     logger.info(f"Generated batch script at: {script_path}")
                     
                     # Log script content for debugging
@@ -391,8 +399,8 @@ python {self.script_path} --input '{input_path}'
                     job_count = int(stdout.read().decode().strip() or "0")
                     logger.info(f"Current job count: {job_count}")
                     
-                    # Submit job
-                    submit_command = f"cd {self.work_dir} && sbatch {script_path}"
+                    # Submit job from input directory
+                    submit_command = f"cd {input_dir} && sbatch {script_path}"
                     logger.info(f"Submitting job with command: {submit_command}")
                     
                     stdin, stdout, stderr = self.ssh_client.exec_command(submit_command)
@@ -421,11 +429,12 @@ python {self.script_path} --input '{input_path}'
                     except (IndexError, ValueError) as e:
                         raise Exception(f"Failed to parse job ID from output: {stdout_content}")
 
-                    # Store job info
+                    # Store job info with organized paths
                     self.jobs[job_id] = {
                         "slurm_job_id": slurm_job_id,
                         "status": "PENDING",
                         "input_file": str(input_path),
+                        "output_dir": str(output_dir),
                         "submitted_at": datetime.utcnow().isoformat(),
                     }
 
@@ -504,7 +513,7 @@ python {self.script_path} --input '{input_path}'
             logger.error(f"Failed to check LLM job: {str(e)}")
             raise
 
-    async def _generate_llm_batch_script(self, job_name: str, input_path: str) -> Path:
+    async def _generate_llm_batch_script(self, job_name: str, input_path: str, output_dir: str) -> Path:
         """Generate batch script for LLM job."""
         script_content = f"""#!/bin/bash
 #SBATCH --job-name={job_name}
@@ -524,7 +533,7 @@ python {self.script_path} --input '{input_path}'
     export TRANSFORMERS_CACHE=$HF_HOME
 
     # Run LLM script with error output
-    python /scratch/project_2011638/llm_script.py --input '{input_path}' 2>&1
+    python /scratch/project_2011638/llm_script.py --input '{input_path}' --output-dir '{output_dir}' 2>&1
 
     # Check exit status
     if [ $? -ne 0 ]; then
@@ -536,6 +545,8 @@ python {self.script_path} --input '{input_path}'
         script_path.write_text(script_content)
         return script_path
     
+
+    ## test job submission
     async def test_llm_job_with_context(self):
         """Test LLM job submission with hardcoded Annikki context."""
         try:
