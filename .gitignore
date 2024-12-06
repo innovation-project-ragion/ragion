@@ -165,3 +165,5 @@ venv/*
 cache/*
 ## ssl folder
 ssl/*
+## llm model folder
+hugging_face_models/*

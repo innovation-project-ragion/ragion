@@ -1,71 +1,92 @@
-# from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
-# from src.models.query import Query, QueryResponse, QueryStatus
-# from src.services.job_manager import job_manager
-# from typing import Dict
-# import logging
+## src/api/v1/queries.py
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from typing import Dict, Optional
+from src.models.query import QueryRequest, QueryResponse
+from src.services.query_service import QueryService
+from src.db.milvus import MilvusClient
+from src.db.neo4j import Neo4jClient
+import logging
+import asyncio
+router = APIRouter()
+logger = logging.getLogger(__name__)
 
-# router = APIRouter()
-# logger = logging.getLogger(__name__)
+async def get_query_service():
+    return QueryService()
 
-# @router.post("/submit", response_model=Dict[str, str])
-# async def submit_query(query: Query):
-#     """Submit a query for processing on Puhti."""
-#     try:
-#         query_id = await job_manager.submit_job(
-#             query=query.text,
-#             params={
-#                 "max_tokens": 300,
-#                 "temperature": 0.1,
-#                 "top_p": 0.95
-#             }
-#         )
-        
-#         return {"query_id": query_id}
-        
-#     except Exception as e:
-#         logger.error(f"Error submitting query: {str(e)}")
-#         raise HTTPException(
-#             status_code=500,
-#             detail=f"Error submitting query: {str(e)}"
-#         )
+async def get_milvus_client():
+    """Get Milvus client instance."""
+    client = MilvusClient()
+    try:
+        yield client
+    finally:
+        client.close()
 
-# @router.get("/status/{query_id}", response_model=QueryStatus)
-# async def check_query_status(query_id: str):
-#     """Check the status of a submitted query."""
-#     try:
-#         status = await job_manager.check_job_status(query_id)
-#         return QueryStatus(**status)
-        
-#     except Exception as e:
-#         logger.error(f"Error checking query status: {str(e)}")
-#         raise HTTPException(
-#             status_code=500,
-#             detail=f"Error checking query status: {str(e)}"
-#         )
+async def get_neo4j_client():
+    """Get Neo4j client instance."""
+    client = Neo4jClient()
+    try:
+        yield client
+    finally:
+        client.close()
 
-# @router.get("/results/{query_id}", response_model=QueryResponse)
-# async def get_query_results(query_id: str):
-#     """Get the results of a completed query."""
-#     try:
-#         status = await job_manager.check_job_status(query_id)
+@router.post("/query", response_model=QueryResponse)
+async def process_query(
+    query: QueryRequest,
+    background_tasks: BackgroundTasks,
+    query_service: QueryService = Depends(get_query_service),
+    milvus_client: MilvusClient = Depends(get_milvus_client),
+    neo4j_client: Neo4jClient = Depends(get_neo4j_client)
+):
+    """Process a query using RAG with Milvus and Neo4j."""
+    try:
+        # Submit query for processing
+        result = await query_service.process_query(
+            query=query.text,
+            milvus_client=milvus_client,
+            neo4j_client=neo4j_client,
+            max_tokens=query.max_tokens
+        )
         
-#         if status["status"] != "COMPLETED":
-#             raise HTTPException(
-#                 status_code=404,
-#                 detail=f"Results not yet available. Current status: {status['status']}"
-#             )
+        # Add background task to monitor LLM job
+        background_tasks.add_task(
+            monitor_query_completion,
+            job_id=result["job_id"],
+            query_service=query_service
+        )
         
-#         results = status["results"]
-        
-#         return QueryResponse(
-#             answer=results["generated_text"],
-#             sources=results.get("sources", []),
-#             confidence=results.get("confidence", 0.0)
-#         )
-        
-#     except Exception as e:
-#         logger.error(f"Error retrieving query results: {str(e)}")
-#         raise HTTPException(
-#             status_code=500,
-#             detail=f"Error retrieving query results: {str(e)}"
-#         )
+        return result
+    except Exception as e:
+        logger.error(f"Error processing query: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/query/{job_id}")
+async def get_query_status(
+    job_id: str,
+    query_service: QueryService = Depends(get_query_service)
+) -> Dict:
+    """Get status of a query processing job."""
+    try:
+        result = await query_service.check_query_status(job_id)
+        return result
+    except Exception as e:
+        logger.error(f"Error checking query status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def monitor_query_completion(job_id: str, query_service: QueryService):
+    """Monitor LLM job completion."""
+    try:
+        while True:
+            result = await query_service.check_query_status(job_id)
+            
+            if result["status"] == "COMPLETED":
+                logger.info(f"Query {job_id} completed successfully")
+                break
+                
+            elif result["status"] == "FAILED":
+                logger.error(f"Query {job_id} failed")
+                break
+                
+            await asyncio.sleep(10)  # Check every 10 seconds
+            
+    except Exception as e:
+        logger.error(f"Error monitoring query {job_id}: {str(e)}")

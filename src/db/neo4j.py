@@ -1,6 +1,8 @@
+## src/db/neo4j.py
 from neo4j import GraphDatabase
 from src.core.config import settings
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,60 @@ class Neo4jClient:
         except Exception as e:
             logger.error(f"Failed to connect to Neo4j: {str(e)}")
             raise
+
+    async def find_mentioned_persons(self, text: str) -> list:
+        """Find persons mentioned in the text that exist in the database."""
+        try:
+            with self.driver.session() as session:
+                # First, get all person names from the database
+                result = session.run("""
+                    MATCH (p:Person)
+                    RETURN p.name as name
+                """)
+                names = [record["name"] for record in result]
+
+                # Look for these names in the query text
+                mentioned = []
+                text_lower = text.lower()
+                for name in names:
+                    if name.lower() in text_lower:
+                        mentioned.append(name)
+
+                logger.info(f"Found mentioned persons: {mentioned}")
+                return mentioned
+
+        except Exception as e:
+            logger.error(f"Error finding mentioned persons: {str(e)}")
+            return []
+
+    async def get_person_context(self, person_name: str):
+        """Get comprehensive context for a person."""
+        try:
+            with self.driver.session() as session:
+                result = session.run("""
+                    MATCH (p:Person {name: $name})
+                    OPTIONAL MATCH (p)-[r]->(d:Document)
+                    OPTIONAL MATCH (p)-[rel:APPEARS_IN]->(doc:Document)
+                    
+                    WITH p,
+                         COLLECT(DISTINCT type(r)) as relationship_types,
+                         COUNT(DISTINCT doc) as doc_count,
+                         p.age as age
+                    
+                    RETURN {
+                        name: p.name,
+                        age: age,
+                        relationships: relationship_types,
+                        document_count: doc_count
+                    } as context
+                """, name=person_name)
+                
+                record = result.single()
+                return record["context"] if record else None
+                
+        except Exception as e:
+            logger.error(f"Error getting person context: {str(e)}")
+            return None
 
     async def get_context(self, question: str, mentioned_persons: list = None):
         """Get context from Neo4j for a question."""
@@ -51,7 +107,7 @@ class Neo4jClient:
                 person_contexts = []
                 if mentioned_persons:
                     for person_name in mentioned_persons:
-                        context = self._get_person_context(session, person_name)
+                        context = await self.get_person_context(person_name)
                         if context:
                             person_contexts.append(context)
                 
@@ -63,28 +119,6 @@ class Neo4jClient:
         except Exception as e:
             logger.error(f"Error getting Neo4j context: {str(e)}")
             raise
-
-    def _get_person_context(self, session, person_name: str):
-        """Get comprehensive context for a person."""
-        result = session.run("""
-            MATCH (p:Person {name: $name})
-            OPTIONAL MATCH (p)-[:APPEARS_IN]->(d:Document)
-            OPTIONAL MATCH (p)-[r]->(other:Person)
-            
-            WITH p,
-                 COLLECT(DISTINCT type(r)) as relationship_types,
-                 COLLECT(DISTINCT d.content) as contents,
-                 COLLECT(DISTINCT d.id) as doc_ids
-            
-            RETURN {
-                name: p.name,
-                relationship_types: relationship_types,
-                document_count: SIZE(contents),
-                document_ids: doc_ids
-            } as context
-        """, {"name": person_name})
-        
-        return result.single()["context"] if result.peek() else None
 
     def close(self):
         """Close the Neo4j connection."""

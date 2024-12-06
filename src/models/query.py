@@ -1,33 +1,26 @@
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List, Optional
 
-class Query(BaseModel):
+class QueryRequest(BaseModel):
     text: str
+    max_tokens: Optional[int] = 300
+    temperature: Optional[float] = 0.1
     top_k: Optional[int] = 5
-    use_neo4j: Optional[bool] = True
-    include_relationships: Optional[bool] = True
 
-class QueryStatus(BaseModel):
-    status: str
-    results: Optional[Dict] = None
-        
-
-class Source(BaseModel):
+class QuerySource(BaseModel):
     text: str
     document_id: str
     score: float
-    person_name: Optional[str]
-    chunk_index: Optional[int]
+
+class PersonContext(BaseModel):
+    name: str
+    age: Optional[int]
+    relationships: List[str]
+    document_count: int
 
 class QueryResponse(BaseModel):
+    query: str
     answer: str
-    sources: List[Source]
+    sources: List[QuerySource]
+    person_contexts: List[PersonContext]
     confidence: float
-    metadata: Optional[Dict] = None
-    person_context: Optional[Dict] = None
-
-class QueryHistory(BaseModel):
-    question: str
-    answer: str
-    timestamp: str
-    sources: List[Source]

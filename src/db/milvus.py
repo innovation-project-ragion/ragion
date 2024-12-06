@@ -1,3 +1,4 @@
+## src/db/milvus.py
 from pymilvus import connections, Collection, utility, CollectionSchema, FieldSchema, DataType
 from src.core.config import settings
 import logging
@@ -34,7 +35,7 @@ class MilvusClient:
                 fields = [
                     FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
                     FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=65535),
-                    FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=settings.EMBEDDING_DIM),
+                    FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=settings.EMBEDDING_DIM ),
                     FieldSchema(name="person_name", dtype=DataType.VARCHAR, max_length=100),
                     FieldSchema(name="person_age", dtype=DataType.INT64),
                     FieldSchema(name="document_id", dtype=DataType.VARCHAR, max_length=100),
