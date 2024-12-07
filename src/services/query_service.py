@@ -20,6 +20,12 @@ class QueryService:
         self.local_results_path = Path("./results")
         self.local_results_path.mkdir(exist_ok=True)
         self.jobs = {}
+        self._init_ssh()
+    async def _init_ssh(self):
+        """Initialize SSH connection to Puhti."""
+        if not hasattr(self.puhti_job_manager, 'ssh_client') or \
+           self.puhti_job_manager.ssh_client is None:
+            await self.puhti_job_manager.connect()
     async def _ensure_query_dirs(self):
         """Ensure query directories exist on both Puhti and locally."""
         try:
@@ -363,11 +369,18 @@ class QueryService:
     async def check_query_status(self, job_id: str) -> Dict:
         """Check status and retrieve results if complete."""
         try:
+            # Ensure SSH connection is open and active
+            await self._init_ssh()
+            if not self.puhti_job_manager.ssh_client:
+                raise Exception("Failed to establish SSH connection")
+            
             sftp = self.puhti_job_manager.ssh_client.open_sftp()
             remote_path = self.query_path / "outputs" / f"response_query_{job_id}.json"
             local_cache_path = self.local_results_path / "cache" / f"{job_id}.json"
 
             try:
+                
+                
                 # Download result
                 sftp.get(str(remote_path), str(local_cache_path))
                 
@@ -427,6 +440,8 @@ class QueryService:
                     "message": "Job is still processing" if job_status["status"] == "RUNNING" else "Job failed",
                     "error": job_status.get("error")
                 }
+            finally:
+                sftp.close()
                     
         except Exception as e:
             logger.error(f"Error retrieving answer: {str(e)}")
