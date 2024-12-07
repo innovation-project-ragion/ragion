@@ -4,7 +4,7 @@ neo4j
 python-dotenv==1.0.0
 python-docx
 nltk
-
+httpx
 # FastAPI and server dependencies
 fastapi==0.100.0
 uvicorn==0.22.0

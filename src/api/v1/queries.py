@@ -1,5 +1,4 @@
 ## src/api/v1/queries.py
-# src/api/v1/queries.py
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from typing import Dict, Optional
 from src.models.query import QueryRequest, QueryResponse, ErrorResponse, QueryStatusResponse, CompletedQueryResponse
@@ -10,6 +9,7 @@ import logging
 import asyncio
 import sys
 import os
+from datetime import datetime
 from src.services.job_manager import PuhtiJobManager
 from src.services.service_factory import ServiceFactory
 
@@ -38,7 +38,7 @@ async def get_neo4j_client():
     finally:
         client.close()
 
-@router.post("/query", response_model=QueryResponse)
+@router.post("/", response_model=QueryResponse)
 async def process_query(
     query: QueryRequest,
     background_tasks: BackgroundTasks,
@@ -62,7 +62,7 @@ async def process_query(
             detail=str(e)
         )
 
-@router.get("/query/{job_id}", response_model=QueryStatusResponse)
+@router.get("/{job_id}/", response_model=QueryStatusResponse)
 async def get_query_status(
     job_id: str,
     query_service: QueryService = Depends(get_query_service)
@@ -134,6 +134,13 @@ async def monitor_query_completion(job_id: str, query_service: QueryService):
     except Exception as e:
         logger.error(f"Error monitoring query {job_id}: {str(e)}")
 
+@router.get("/healthcheck")
+async def healthcheck():
+    """Check if the API is responsive."""
+    return {
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat()
+    }
 # In your API endpoint or test script
 @router.get("/test")
 async def test_llm():

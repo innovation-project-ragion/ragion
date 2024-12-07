@@ -131,19 +131,15 @@ class HomePage:
         st.session_state.messages.append({"role": "assistant", "content": response})
 
 def main():
-    try:
-        if "authenticated" not in st.session_state:
-            st.session_state.authenticated = True
-            
-        if st.session_state.authenticated:
-            home = HomePage()
-            home.render_sidebar()
-            home.render_main_content()
-        else:
-            st.error("Please log in to access the chat interface")
-            
-    except Exception as e:
-        st.error(f"An error occurred: {str(e)}")
+    home = HomePage()
+    chat_interface = ChatInterface()
+    
+    home.render_sidebar()
+    
+    # Main chat area
+    st.title("🤖 RAG Chat Assistant")
+    chat_interface.display_chat_history()
+    chat_interface.handle_user_input()
 
 if __name__ == "__main__":
     main()
