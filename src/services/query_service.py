@@ -19,7 +19,7 @@ class QueryService:
         self.query_path = Path("/scratch/project_2011638/rag_queries")
         self.local_results_path = Path("./results")
         self.local_results_path.mkdir(exist_ok=True)
-
+        self.jobs = {}
     async def _ensure_query_dirs(self):
         """Ensure query directories exist on both Puhti and locally."""
         try:
@@ -122,7 +122,7 @@ class QueryService:
         neo4j_client: Neo4jClient,
         max_tokens: int = 300
     ) -> QueryResponse:
-        """Process a query through the RAG pipeline with organized storage."""
+        """Process a query through the RAG pipeline."""
         milvus_results = []
         person_contexts = []
         mentioned_persons = []
@@ -181,6 +181,7 @@ class QueryService:
             # 4. Prepare context for LLM
             try:
                 context = self._prepare_context(milvus_results, person_contexts)
+                logger.info(f"Prepared context with {len(context.split())} words")
             except Exception as e:
                 logger.error(f"Context preparation failed: {str(e)}")
                 return InitialQueryResponse(
@@ -225,7 +226,7 @@ class QueryService:
                     }
                 }
                 
-                # Submit job to organized directories
+                # Submit to Puhti through job manager
                 job_id = await self.puhti_job_manager.submit_llm_job(
                     input_data=input_data,
                     input_dir=self.query_path / "inputs",
@@ -233,10 +234,9 @@ class QueryService:
                 )
                 
                 if not job_id:
-                    logger.error("Failed to get job ID from Puhti")
                     return InitialQueryResponse(
                         status="error",
-                        message="Failed to get job ID from Puhti",
+                        message="Failed to submit LLM job",
                         data={
                             "milvus_hits": len(milvus_results),
                             "person_contexts": len(person_contexts),
@@ -244,10 +244,10 @@ class QueryService:
                             "context_length": len(context.split())
                         }
                     )
-                    
+                
                 logger.info(f"Submitted LLM job: {job_id}")
                 
-                # Return successful response
+                # Return initial response
                 return InitialQueryResponse(
                     status="processing",
                     message="Query is being processed",
@@ -264,13 +264,13 @@ class QueryService:
                 logger.error(f"Error submitting LLM job: {str(e)}")
                 return InitialQueryResponse(
                     status="error",
-                    message="Failed to submit processing job",
+                    message="Failed to submit LLM job",
                     error=str(e),
                     data={
                         "milvus_hits": len(milvus_results),
                         "person_contexts": len(person_contexts),
                         "mentioned_persons": mentioned_persons,
-                        "context_length": len(context.split()) if context else 0
+                        "context_length": len(context.split())
                     }
                 )
                 
@@ -361,10 +361,77 @@ class QueryService:
             raise
 
     async def check_query_status(self, job_id: str) -> Dict:
-        """Check status of query processing job."""
+        """Check status and retrieve results if complete."""
         try:
-            job_info = await self.puhti_job_manager.check_llm_job(job_id)
-            return job_info
+            sftp = self.puhti_job_manager.ssh_client.open_sftp()
+            remote_path = self.query_path / "outputs" / f"response_query_{job_id}.json"
+            local_cache_path = self.local_results_path / "cache" / f"{job_id}.json"
+
+            try:
+                # Download result
+                sftp.get(str(remote_path), str(local_cache_path))
+                
+                # Parse result
+                async with aiofiles.open(local_cache_path, 'r') as f:
+                    content = await f.read()
+                    data = json.loads(content)
+                
+                # Convert to CompletedQueryResponse format
+                sources = [
+                    QuerySource(
+                        text=source["text"],
+                        document_id=source["document_id"],
+                        score=source.get("score", 0.0)
+                    )
+                    for source in data.get("sources", [])
+                ]
+                
+                person_contexts = [
+                    PersonContext(
+                        name=ctx["name"],
+                        age=ctx.get("age"),
+                        relationships=ctx.get("relationships", []),
+                        document_count=ctx.get("document_count", 0)
+                    )
+                    for ctx in data.get("person_contexts", [])
+                ]
+                
+                result = {
+                    "status": "COMPLETED",
+                    "result": {
+                        "query": data["query"],
+                        "answer": data["response"],
+                        "sources": sources,
+                        "person_contexts": person_contexts,
+                        "confidence": data.get("confidence", 0.0)
+                    },
+                    "message": "Query completed successfully"
+                }
+                
+                # Clean up remote files
+                sftp.remove(str(remote_path))
+                input_path = self.query_path / "inputs" / f"query_{job_id}.json"
+                try:
+                    sftp.remove(str(input_path))
+                except FileNotFoundError:
+                    pass
+                
+                return result
+                    
+            except FileNotFoundError:
+                logger.warning(f"Results not yet available for job {job_id}")
+                # Check job status with PuhtiJobManager
+                job_status = await self.puhti_job_manager.check_llm_job(job_id)
+                return {
+                    "status": job_status["status"],
+                    "message": "Job is still processing" if job_status["status"] == "RUNNING" else "Job failed",
+                    "error": job_status.get("error")
+                }
+                    
         except Exception as e:
-            logger.error(f"Error checking query status: {str(e)}")
-            raise
+            logger.error(f"Error retrieving answer: {str(e)}")
+            return {
+                "status": "FAILED",
+                "message": "Error retrieving results",
+                "error": str(e)
+            }

@@ -477,41 +477,88 @@ python {self.script_path} --input '{input_path}'
             
             if not job_status:  # Job completed
                 sftp = self.ssh_client.open_sftp()
-                response_path = self.work_dir / f"response_{Path(job_info['input_file']).stem}.json"
+                
+                # Try different possible filename patterns
+                possible_filenames = [
+                    f"response_query_{job_id}.json",  # New pattern
+                    f"response_{Path(job_info['input_file']).stem}.json",  # Old pattern
+                    f"response_{job_id}.json"  # Fallback pattern
+                ]
+                
+                response_data = None
+                used_filepath = None
+                
+                for filename in possible_filenames:
+                    try:
+                        response_path = Path(job_info.get('output_dir', self.work_dir)) / filename
+                        logger.info(f"Checking for response file: {response_path}")
+                        
+                        # Download results
+                        local_response_path = Path(f"/tmp/response_{job_id}.json")
+                        sftp.get(str(response_path), str(local_response_path))
+                        
+                        # Load results
+                        with open(local_response_path) as f:
+                            response_data = json.load(f)
+                        
+                        # Clean up
+                        local_response_path.unlink()
+                        used_filepath = response_path
+                        break
+                        
+                    except FileNotFoundError:
+                        logger.debug(f"Response file not found at {filename}")
+                        continue
+                    except Exception as e:
+                        logger.error(f"Error processing response file {filename}: {str(e)}")
+                        continue
+                
+                if response_data is None:
+                    self.jobs[job_id]["status"] = "FAILED"
+                    logger.error(f"LLM job output not found for {job_id} in any of the expected locations")
+                    return {
+                        "status": "FAILED",
+                        "message": "Output files not found",
+                        "error": "Response file not found in expected locations"
+                    }
                 
                 try:
-                    # Download results
-                    local_response_path = Path(f"/tmp/response_{job_id}.json")
-                    sftp.get(str(response_path), str(local_response_path))
-                    
-                    # Load results
-                    with open(local_response_path) as f:
-                        response_data = json.load(f)
-                    
-                    # Clean up
-                    local_response_path.unlink()
-                    sftp.remove(str(response_path))
-                    sftp.remove(job_info["input_file"])
-                    
-                    self.jobs[job_id].update({
-                        "status": "COMPLETED",
-                        "response": response_data["response"]
-                    })
-                    
-                except FileNotFoundError:
-                    self.jobs[job_id]["status"] = "FAILED"
-                    logger.error(f"LLM job output not found for {job_id}")
+                    # Clean up remote files if successfully processed
+                    sftp.remove(str(used_filepath))
+                    input_file = job_info.get("input_file")
+                    if input_file:
+                        try:
+                            sftp.remove(input_file)
+                        except FileNotFoundError:
+                            pass
                 except Exception as e:
-                    self.jobs[job_id]["status"] = "FAILED"
-                    logger.error(f"Error processing LLM results: {str(e)}")
+                    logger.warning(f"Error cleaning up remote files: {str(e)}")
+                
+                self.jobs[job_id].update({
+                    "status": "COMPLETED",
+                    "response": response_data
+                })
+                
+                return {
+                    "status": "COMPLETED",
+                    "response": response_data,
+                    "message": "Job completed successfully"
+                }
+                    
             else:
                 self.jobs[job_id]["status"] = "RUNNING"
+                return {
+                    "status": "RUNNING",
+                    "message": "Job is still running"
+                }
                 
-            return self.jobs[job_id]
-            
         except Exception as e:
             logger.error(f"Failed to check LLM job: {str(e)}")
-            raise
+            return {
+                "status": "FAILED",
+                "message": "Error checking job status",
+                "error": str(e)
+            }
 
     async def _generate_llm_batch_script(self, job_name: str, input_path: str, output_dir: str) -> Path:
         """Generate batch script for LLM job."""

@@ -21,3 +21,10 @@ docker-compose.yml
 *.log
 *.swp
 __pycache__
+
+## models folder
+models/*
+!models/__init__.py
+
+# result folder
+result/*

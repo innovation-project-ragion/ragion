@@ -167,3 +167,6 @@ cache/*
 ssl/*
 ## llm model folder
 hugging_face_models/*
+
+# result folder
+results/*

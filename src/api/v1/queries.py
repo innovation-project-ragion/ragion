@@ -1,18 +1,26 @@
 ## src/api/v1/queries.py
+# src/api/v1/queries.py
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from typing import Dict, Optional
-from src.models.query import QueryRequest, QueryResponse, ErrorResponse, QueryStatusResponse
+from src.models.query import QueryRequest, QueryResponse, ErrorResponse, QueryStatusResponse, CompletedQueryResponse
 from src.services.query_service import QueryService
 from src.db.milvus import MilvusClient
 from src.db.neo4j import Neo4jClient
 import logging
 import asyncio
+import sys
+import os
 from src.services.job_manager import PuhtiJobManager
+from src.services.service_factory import ServiceFactory
+
+# Ensure the src directory is in the Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 async def get_query_service():
-    return QueryService()
+    return await ServiceFactory.get_query_service()
 
 async def get_milvus_client():
     """Get Milvus client instance."""
@@ -30,8 +38,6 @@ async def get_neo4j_client():
     finally:
         client.close()
 
-
-
 @router.post("/query", response_model=QueryResponse)
 async def process_query(
     query: QueryRequest,
@@ -48,13 +54,12 @@ async def process_query(
             neo4j_client=neo4j_client,
             max_tokens=query.max_tokens
         )
-        
         return result
     except Exception as e:
         logger.error(f"Error processing query: {str(e)}")
-        return ErrorResponse(
-            message="Failed to process query",
-            error=str(e)
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
         )
 
 @router.get("/query/{job_id}", response_model=QueryStatusResponse)
@@ -65,19 +70,49 @@ async def get_query_status(
     """Get status of a query processing job."""
     try:
         result = await query_service.check_query_status(job_id)
-        return QueryStatusResponse(
-            status=result["status"],
-            job_id=job_id,
-            result=result.get("response"),
-            message=result.get("message"),
-            error=result.get("error")
-        )
+        
+        if not result:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No job found with ID {job_id}"
+            )
+        
+        # Handle different status cases appropriately
+        if result["status"] == "COMPLETED":
+            if not isinstance(result.get("result"), dict):
+                logger.error(f"Invalid result format for job {job_id}: {result}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Invalid result format from query service"
+                )
+            
+            return QueryStatusResponse(
+                status="completed",
+                job_id=job_id,
+                result=result["result"],
+                message="Query completed successfully"
+            )
+        elif result["status"] == "FAILED":
+            return QueryStatusResponse(
+                status="failed",
+                job_id=job_id,
+                message=result.get("message", "Query processing failed"),
+                error=result.get("error")
+            )
+        else:
+            return QueryStatusResponse(
+                status="processing",
+                job_id=job_id,
+                message="Query is still being processed"
+            )
+            
+    except HTTPException:
+        raise
     except Exception as e:
-        return QueryStatusResponse(
-            status="error",
-            job_id=job_id,
-            message="Failed to check query status",
-            error=str(e)
+        logger.error(f"Error checking status for job {job_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
         )
 
 async def monitor_query_completion(job_id: str, query_service: QueryService):
