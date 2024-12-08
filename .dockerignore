@@ -28,3 +28,6 @@ models/*
 
 # result folder
 result/*
+
+# llm folder
+hugging_face_models/*

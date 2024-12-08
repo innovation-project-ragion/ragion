@@ -91,6 +91,51 @@ class HomePage:
                     st.session_state.is_processing = False
                     st.rerun()
 
+    # def render_main_content(self):
+    #     """Render the main chat interface"""
+    #     st.title("🤖 RAG Chat Assistant")
+        
+    #     # Show welcome message only when showing_welcome is True
+    #     if st.session_state.showing_welcome:
+    #         welcome_container = st.container()
+    #         with welcome_container:
+    #             st.markdown("""
+    #             👋 **Welcome to RAG Chat Assistant!**
+    #             """)
+                
+    #             if not st.session_state.get("uploaded_files"):
+    #                 st.info("👈 Please upload your documents in the sidebar to get started!")
+        
+    #     # Chat interface
+    #     st.divider()
+        
+    #     # Display chat history if it exists and the method is available
+    #     if hasattr(self.chat_interface, 'display_chat_history'):
+    #         self.chat_interface.display_chat_history()
+        
+    #     # Only show input if not currently processing
+    #     if not st.session_state.is_processing:
+    #         if prompt := st.chat_input("What would you like to know?"):
+    #             st.session_state.showing_welcome = False
+    #             st.session_state.is_processing = True
+    #             self.chat_interface.handle_user_input(prompt)
+    #     else:
+    #         # Show disabled input while processing
+    #         st.text_input(
+    #             "What would you like to know?", 
+    #             disabled=True, 
+    #             value="Processing your query... please wait"
+    #         )
+        
+    #     # Optional: Debug information in expandable section
+    #     if st.session_state.get("show_debug", False):
+    #         with st.expander("🔍 Debug Information", expanded=False):
+    #             st.write("Session State:")
+    #             st.json({
+    #                 "current_query_id": st.session_state.get("current_query_id"),
+    #                 "is_processing": st.session_state.is_processing,
+    #                 "showing_welcome": st.session_state.showing_welcome
+    #             })
     def render_main_content(self):
         """Render the main chat interface"""
         st.title("🤖 RAG Chat Assistant")
@@ -106,9 +151,45 @@ class HomePage:
                 if not st.session_state.get("uploaded_files"):
                     st.info("👈 Please upload your documents in the sidebar to get started!")
         
-        # Chat interface
+        # Divider for separating the welcome message from chat area
         st.divider()
         
+        # === Hardcoded Test: Add This Block ===
+        st.markdown("### Testing Hardcoded Answer and Sources")
+        
+        # Hardcoded answer
+        hardcoded_answer = "Elisa on 66-vuotias. Luottamus: 95%"
+        
+        # Hardcoded sources
+        hardcoded_sources = [
+            {
+                "text": "Kansalaisuus: Suomi",
+                "document_id": "M2042",
+                "score": "95%"
+            },
+            {
+                "text": "Maakunta: ?",
+                "document_id": "KL-49",
+                "score": "85%"
+            }
+        ]
+        
+        # Display the hardcoded answer
+        st.markdown(f"**Answer:** {hardcoded_answer}")
+        
+        # Display the hardcoded sources
+        if hardcoded_sources:
+            with st.expander("📚 Sources", expanded=False):
+                for idx, source in enumerate(hardcoded_sources, 1):
+                    st.markdown(f"""
+                    **Source {idx}** (Document {source['document_id']}) - Relevance: {source['score']}
+                    ```
+                    {source['text']}
+                    ```
+                    """)
+        # === End of Hardcoded Test ===
+
+        # Existing Chat Interface Code
         # Display chat history if it exists and the method is available
         if hasattr(self.chat_interface, 'display_chat_history'):
             self.chat_interface.display_chat_history()
@@ -136,6 +217,7 @@ class HomePage:
                     "is_processing": st.session_state.is_processing,
                     "showing_welcome": st.session_state.showing_welcome
                 })
+
 
 def main():
     home = HomePage()

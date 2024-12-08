@@ -1,3 +1,4 @@
+## src/frontend/components/chat/chat_interface.py
 import streamlit as st
 from typing import Dict, Optional, List
 import asyncio
@@ -53,7 +54,6 @@ class ChatInterface:
         return main_answer
 
     async def _process_query_async(self, query: str) -> None:
-        """Async method to process the query."""
         async with RAGApiClient() as client:
             try:
                 with st.chat_message("assistant"):
@@ -76,43 +76,44 @@ class ChatInterface:
                                 logger.info("-" * 80)
                                 logger.info("RESPONSE RECEIVED")
                                 
+                                # Clear placeholder
                                 message_placeholder.empty()
+                                
+                                # Process and render response
                                 formatted_response = self._format_response(status_response)
+                                logger.debug(f"Original answer before cleaning: {formatted_response['answer']}")
                                 
-                                # Clean and log the answer
                                 cleaned_answer = self._clean_answer(formatted_response["answer"])
-                                logger.info("CLEANED ANSWER:")
-                                logger.info(cleaned_answer)
-                                logger.info("-" * 80)
+                                logger.debug(f"Cleaned answer: {cleaned_answer}")
                                 
-                                with message_placeholder:
-                                    # Use st.markdown with triple quotes for proper Unicode handling
-                                    st.markdown(f"""
-                                    {cleaned_answer}
-                                    """)
-                                    
-                                    if formatted_response["sources"]:
-                                        with st.expander("📚 Sources", expanded=False):
-                                            for idx, source in enumerate(formatted_response["sources"], 1):
-                                                st.markdown(f"""
-                                                **Source {idx}** (Document {source['document_id']}) - Relevance: {source['score']}
-                                                ```
-                                                {source['text'][:self.max_source_length]}...
-                                                ```
-                                                """)
+                                # Render the cleaned answer
+                                message_placeholder.markdown(cleaned_answer)
                                 
+                                # Render sources
+                                if formatted_response["sources"]:
+                                    with st.expander("📚 Sources", expanded=False):
+                                        for idx, source in enumerate(formatted_response["sources"], 1):
+                                            st.markdown(f"""
+                                            **Source {idx}** (Document {source['document_id']}) - Relevance: {source['score']}
+                                            ```
+                                            {source['text'][:self.max_source_length]}...
+                                            ```
+                                            """)
+                                
+                                # Update session state
                                 st.session_state.messages.append({
                                     "role": "assistant",
                                     "content": cleaned_answer,
                                     "sources": formatted_response["sources"],
                                     "timestamp": datetime.now().strftime("%H:%M:%S")
                                 })
+                                logger.debug(f"Updated session state: {st.session_state.messages}")
                                 break
-                                
+                            
                             elif status_response.get("status") == "failed":
                                 error_msg = status_response.get("error", "Unknown error")
                                 raise Exception(error_msg)
-                                
+                            
                             await asyncio.sleep(1)
                     else:
                         raise Exception(f"Unexpected response status: {response.get('status')}")
@@ -120,6 +121,7 @@ class ChatInterface:
             except Exception as e:
                 logger.error(f"Error processing query: {str(e)}", exc_info=True)
                 message_placeholder.error(f"❌ Error: {str(e)}")
+
 
     def _format_response(self, response_data: dict) -> dict:
         """Format the response data into a structured format."""
