@@ -21,6 +21,8 @@ services:
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
+      - PYTHONIOENCODING=UTF-8
+      - STREAMLIT_SERVER_LOG_LEVEL=debug
     runtime: nvidia
     deploy:
       resources:

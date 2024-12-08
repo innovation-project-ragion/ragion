@@ -1,178 +1,198 @@
-# src/frontend/components/chat/chat_interface.py
 import streamlit as st
-from typing import Dict
+from typing import Dict, Optional, List
 import asyncio
 import json
 import time
 import logging
+import sys
+import re
+from datetime import datetime
 from src.frontend.utils.api_client import RAGApiClient
 
-logger = logging.getLogger(__name__)
+# Configure root logger
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - [%(name)s] - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+logger = logging.getLogger("frontend.chat")
+logger.setLevel(logging.DEBUG)
 
 class ChatInterface:
     def __init__(self):
+        self.initialize_session_state()
+        self.timeout = 300
+        self.max_retries = 3
+        self.max_source_length = 200
+
+    def initialize_session_state(self):
+        """Initialize all required session state variables."""
         if "messages" not in st.session_state:
             st.session_state.messages = []
-        if "api_client" not in st.session_state:
-            st.session_state.api_client = RAGApiClient()
-        self.timeout = 300  # 5 minutes timeout
-        self.max_retries = 3
+        if "debug_enabled" not in st.session_state:
+            st.session_state.debug_enabled = False
+        if "is_processing" not in st.session_state:
+            st.session_state.is_processing = False
 
-    def _show_thinking_animation(self, placeholder):
-        """Show thinking animation with rotating dots."""
-        thinking_states = ["🤔 Thinking", "🤔 Thinking.", "🤔 Thinking..", "🤔 Thinking..."]
-        for state in thinking_states:
-            placeholder.markdown(f"{state}")
-            time.sleep(0.3)
+    def _clean_answer(self, answer: str) -> str:
+        """Clean up duplicated content and format the answer."""
+        if not answer:
+            return ""
+            
+        # Split on first occurrence of "Luottamus:"
+        main_answer = answer.split("Luottamus:")[0].strip()
+        
+        # If there's a confidence part, add it back once
+        if "Luottamus:" in answer:
+            confidence_part = "Luottamus:" + answer.split("Luottamus:")[1].split(".")[0] + "."
+            main_answer = f"{main_answer} {confidence_part}"
+            
+        return main_answer
 
-    async def process_query(self, query: str) -> None:
-        """Process a query through the RAG pipeline with enhanced error handling."""
-        try:
-            with st.chat_message("assistant"):
-                message_placeholder = st.empty()
-                
-                # Show initial loading state
-                with message_placeholder:
-                    col1, col2 = st.columns([1, 5])
-                    with col1:
-                        st.markdown("🔄")
-                    with col2:
-                        st.markdown("Connecting to backend...")
-                        progress_bar = st.progress(0)
-
-                # Submit query with retries
-                retry_count = 0
-                response = None
-                
-                while retry_count < self.max_retries:
-                    try:
-                        response = await st.session_state.api_client.submit_query(query)
-                        progress_bar.progress(0.2)
-                        break
-                    except Exception as e:
-                        retry_count += 1
-                        if retry_count == self.max_retries:
-                            raise Exception(f"Failed to connect after {self.max_retries} attempts: {str(e)}")
-                        logger.warning(f"Retry {retry_count}/{self.max_retries}: {str(e)}")
-                        await asyncio.sleep(2 ** retry_count)  # Exponential backoff
-
-                if response and response.get("status") == "processing" and response.get("job_id"):
-                    # Update loading state to show processing
+    async def _process_query_async(self, query: str) -> None:
+        """Async method to process the query."""
+        async with RAGApiClient() as client:
+            try:
+                with st.chat_message("assistant"):
+                    message_placeholder = st.empty()
+                    
                     with message_placeholder:
-                        col1, col2 = st.columns([1, 5])
-                        with col1:
-                            st.markdown("⚡")
-                        with col2:
-                            status_text = st.empty()
-                            status_text.markdown("Processing your query...")
-                            progress_bar.progress(0.3)
-
-                    start_time = time.time()
-                    found_answer = False
+                        st.markdown("```\nProcessing query...\n```")
                     
-                    async for chunk in self.api_client.stream_response(response["job_id"]):
-                        try:
-                            if time.time() - start_time > self.timeout:
-                                raise TimeoutError("Query processing timeout")
-
-                            # Update progress while waiting
-                            if not found_answer:
-                                progress_value = min(0.3 + ((time.time() - start_time) / self.timeout) * 0.6, 0.9)
-                                progress_bar.progress(progress_value)
-
-                            # Parse the full response
-                            response_data = json.loads(chunk)
-                            found_answer = True
+                    response = await client.submit_query(query)
+                    
+                    if response and response.get("status") == "processing":
+                        job_id = response.get("job_id")
+                        if not job_id:
+                            raise Exception("No job ID received from backend")
+                        
+                        while True:
+                            status_response = await client.check_query_status(job_id)
                             
-                            # Complete the progress bar
-                            progress_bar.progress(1.0)
-                            
-                            # Extract just the answer/response
-                            answer = response_data.get('response', '')
-                            
-                            # Clear the loading state and show the answer
-                            message_placeholder.empty()
-                            with message_placeholder:
-                                st.markdown(answer)
+                            if status_response.get("status") == "completed":
+                                logger.info("-" * 80)
+                                logger.info("RESPONSE RECEIVED")
                                 
-                                # Show sources in expander
-                                with st.expander("📚 View sources", expanded=False):
-                                    sources = response_data.get('sources', [])
-                                    if sources:
-                                        for idx, source in enumerate(sources[:3], 1):
-                                            st.markdown(f"""
-                                            **Source {idx}** (Document {source['document_id']})
-                                            ```
-                                            {source['text'][:200]}...
-                                            ```
-                                            """)
-                                    else:
-                                        st.info("ℹ️ No source documents available for this response.")
-                            
-                            # Store in chat history
-                            st.session_state.messages.append({
-                                "role": "assistant",
-                                "content": answer,
-                                "metadata": {
-                                    "sources": response_data.get('sources', []),
-                                    "person_contexts": response_data.get('person_contexts', [])
-                                }
-                            })
-                            
-                        except json.JSONDecodeError as e:
-                            logger.error(f"Error parsing response: {str(e)}")
-                            message_placeholder.markdown(f"❌ Error: Invalid response format")
-                        except Exception as e:
-                            logger.error(f"Error processing chunk: {str(e)}")
-                            message_placeholder.markdown(f"❌ Error: {str(e)}")
-                    
-        except TimeoutError:
-            st.error("❌ Query processing timed out. Please try again.")
+                                message_placeholder.empty()
+                                formatted_response = self._format_response(status_response)
+                                
+                                # Clean and log the answer
+                                cleaned_answer = self._clean_answer(formatted_response["answer"])
+                                logger.info("CLEANED ANSWER:")
+                                logger.info(cleaned_answer)
+                                logger.info("-" * 80)
+                                
+                                with message_placeholder:
+                                    # Use st.markdown with triple quotes for proper Unicode handling
+                                    st.markdown(f"""
+                                    {cleaned_answer}
+                                    """)
+                                    
+                                    if formatted_response["sources"]:
+                                        with st.expander("📚 Sources", expanded=False):
+                                            for idx, source in enumerate(formatted_response["sources"], 1):
+                                                st.markdown(f"""
+                                                **Source {idx}** (Document {source['document_id']}) - Relevance: {source['score']}
+                                                ```
+                                                {source['text'][:self.max_source_length]}...
+                                                ```
+                                                """)
+                                
+                                st.session_state.messages.append({
+                                    "role": "assistant",
+                                    "content": cleaned_answer,
+                                    "sources": formatted_response["sources"],
+                                    "timestamp": datetime.now().strftime("%H:%M:%S")
+                                })
+                                break
+                                
+                            elif status_response.get("status") == "failed":
+                                error_msg = status_response.get("error", "Unknown error")
+                                raise Exception(error_msg)
+                                
+                            await asyncio.sleep(1)
+                    else:
+                        raise Exception(f"Unexpected response status: {response.get('status')}")
+                        
+            except Exception as e:
+                logger.error(f"Error processing query: {str(e)}", exc_info=True)
+                message_placeholder.error(f"❌ Error: {str(e)}")
+
+    def _format_response(self, response_data: dict) -> dict:
+        """Format the response data into a structured format."""
+        try:
+            if response_data.get("status") == "completed" and "result" in response_data:
+                answer = response_data["result"].get("answer", "")
+                sources = response_data["result"].get("sources", [])
+            else:
+                answer = response_data.get("response", "")
+                sources = response_data.get("sources", [])
+
+            formatted_sources = []
+            for source in sources:
+                formatted_sources.append({
+                    "text": source.get("text", ""),
+                    "document_id": source.get("document_id", "Unknown"),
+                    "score": f"{float(source.get('score', 0)):.2%}"
+                })
+
+            return {
+                "answer": answer,
+                "sources": formatted_sources
+            }
         except Exception as e:
-            logger.error(f"Error processing query: {str(e)}")
-            st.error(f"❌ Error: {str(e)}")
+            logger.error(f"Error formatting response: {str(e)}", exc_info=True)
+            return {"answer": "Error formatting response", "sources": []}
 
-    def display_chat_history(self):
-        """Display the chat history with clean formatting."""
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                # Display just the message content
-                st.markdown(message["content"])
-                
-                # If it's an assistant message and has sources, show them in an expander
-                if message["role"] == "assistant" and "metadata" in message:
-                    with st.expander("📚 View supporting documents", expanded=False):
-                        sources = message["metadata"].get("sources", [])
-                        if sources:
-                            for idx, source in enumerate(sources[:3], 1):
-                                st.markdown(f"""
-                                **Source {idx}** (Document {source['document_id']})
-                                ```
-                                {source['text'][:200]}...
-                                ```
-                                """)
-                        else:
-                            st.info("ℹ️ No source documents available for this response.")
-
-    def handle_user_input(self):
+    def handle_user_input(self, prompt: str):
         """Handle user input and process it through the RAG pipeline."""
         try:
-            if prompt := st.chat_input("What would you like to know?"):
-                # Add user message to chat history
-                st.session_state.messages.append({
-                    "role": "user", 
-                    "content": prompt
-                })
-                
-                # Display user message
-                with st.chat_message("user"):
-                    st.markdown(prompt)
-                
-                # Process the query asynchronously
-                asyncio.run(self.process_query(prompt))
+            # Store user message
+            st.session_state.messages.append({
+                "role": "user",
+                "content": prompt,
+                "timestamp": datetime.now().strftime("%H:%M:%S")
+            })
+            
+            # Display user message
+            with st.chat_message("user"):
+                st.write(prompt)
+            
+            # Set processing state
+            st.session_state.is_processing = True
+            
+            # Create new event loop and run async process
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(self._process_query_async(prompt))
+            finally:
+                loop.close()
+                st.session_state.is_processing = False
+            
         except Exception as e:
-            logger.error(f"Error handling user input: {str(e)}")
-            st.error(f"❌ Error: Something went wrong. Please try again.")
+            logger.error(f"Error handling user input: {str(e)}", exc_info=True)
+            st.error(f"❌ Error: {str(e)}")
+            st.session_state.is_processing = False
+
+    def display_chat_history(self):
+        """Display the chat history."""
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+                
+                if message["role"] == "assistant" and "sources" in message:
+                    with st.expander("📚 Sources", expanded=False):
+                        for idx, source in enumerate(message["sources"], 1):
+                            st.markdown(f"""
+                            **Source {idx}** (Document {source['document_id']}) - Relevance: {source['score']}
+                            ```
+                            {source['text'][:self.max_source_length]}...
+                            ```
+                            """)
 
     def clear_chat_history(self):
         """Clear the chat history."""

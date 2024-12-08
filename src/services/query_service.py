@@ -422,12 +422,12 @@ class QueryService:
                 }
                 
                 # Clean up remote files
-                sftp.remove(str(remote_path))
-                input_path = self.query_path / "inputs" / f"query_{job_id}.json"
-                try:
-                    sftp.remove(str(input_path))
-                except FileNotFoundError:
-                    pass
+                #sftp.remove(str(remote_path))
+                #input_path = self.query_path / "inputs" / f"query_{job_id}.json"
+                #try:
+                    #sftp.remove(str(input_path))
+                #except FileNotFoundError:
+                    #pass
                 
                 return result
                     

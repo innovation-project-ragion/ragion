@@ -3,6 +3,7 @@ import streamlit as st
 import sys
 import time
 from pathlib import Path
+import uuid
 
 # Add the project root to Python path
 root_path = Path(__file__).parent.parent.parent
@@ -20,6 +21,14 @@ class HomePage:
         
         # Initialize session state
         init_session_state()
+        
+        # Initialize query tracking
+        if "current_query_id" not in st.session_state:
+            st.session_state.current_query_id = None
+        if "is_processing" not in st.session_state:
+            st.session_state.is_processing = False
+        if "showing_welcome" not in st.session_state:
+            st.session_state.showing_welcome = True
         
         # Set up the page configuration
         st.set_page_config(
@@ -67,22 +76,23 @@ class HomePage:
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("Clear History", use_container_width=True):
-                    self.chat_interface.clear_chat_history()
+                    if hasattr(self.chat_interface, 'clear_chat_history'):
+                        self.chat_interface.clear_chat_history()
                     st.session_state.showing_welcome = True
+                    st.session_state.current_query_id = None
+                    st.session_state.is_processing = False
                     st.rerun()
             with col2:
                 if st.button("New Chat", use_container_width=True):
-                    st.session_state.messages = []
+                    if hasattr(st.session_state, 'messages'):
+                        st.session_state.messages = []
                     st.session_state.showing_welcome = True
+                    st.session_state.current_query_id = None
+                    st.session_state.is_processing = False
                     st.rerun()
 
     def render_main_content(self):
         """Render the main chat interface"""
-        # Initialize showing_welcome in session state if not exists
-        if "showing_welcome" not in st.session_state:
-            st.session_state.showing_welcome = True
-            
-        # Header
         st.title("🤖 RAG Chat Assistant")
         
         # Show welcome message only when showing_welcome is True
@@ -91,55 +101,50 @@ class HomePage:
             with welcome_container:
                 st.markdown("""
                 👋 **Welcome to RAG Chat Assistant!**
-                
-                I can help you with:
-                - Analyzing documents you upload
-                - Answering questions about your data
-                - Generating insights and summaries
-                
-                To get started:
-                1. Upload your documents using the sidebar 📄
-                2. Ask any questions about your documents 💭
-                3. Get AI-powered responses based on your data 🤖
                 """)
                 
-                # Document check
                 if not st.session_state.get("uploaded_files"):
                     st.info("👈 Please upload your documents in the sidebar to get started!")
         
         # Chat interface
         st.divider()
-        self.chat_interface.display_chat_history()
         
-        # If a message is sent, hide the welcome message
-        if prompt := st.chat_input("What would you like to know?"):
-            st.session_state.showing_welcome = False
-            self.process_and_display_message(prompt)
-            st.rerun()
-
-    def process_and_display_message(self, prompt: str):
-        """Process and display the message with streaming response"""
-        # Add user message to chat history
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        # Display chat history if it exists and the method is available
+        if hasattr(self.chat_interface, 'display_chat_history'):
+            self.chat_interface.display_chat_history()
         
-        # Get response
-        model = st.session_state.get("selected_model", "GPT-3.5")
-        temperature = st.session_state.get("temperature", 0.7)
-        response = f"Model: {model} (temp={temperature})\nThis is a mock response to: {prompt}"
+        # Only show input if not currently processing
+        if not st.session_state.is_processing:
+            if prompt := st.chat_input("What would you like to know?"):
+                st.session_state.showing_welcome = False
+                st.session_state.is_processing = True
+                self.chat_interface.handle_user_input(prompt)
+        else:
+            # Show disabled input while processing
+            st.text_input(
+                "What would you like to know?", 
+                disabled=True, 
+                value="Processing your query... please wait"
+            )
         
-        # Add assistant response to chat history
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        # Optional: Debug information in expandable section
+        if st.session_state.get("show_debug", False):
+            with st.expander("🔍 Debug Information", expanded=False):
+                st.write("Session State:")
+                st.json({
+                    "current_query_id": st.session_state.get("current_query_id"),
+                    "is_processing": st.session_state.is_processing,
+                    "showing_welcome": st.session_state.showing_welcome
+                })
 
 def main():
     home = HomePage()
-    chat_interface = ChatInterface()
     
+    # Render the sidebar first
     home.render_sidebar()
     
-    # Main chat area
-    st.title("🤖 RAG Chat Assistant")
-    chat_interface.display_chat_history()
-    chat_interface.handle_user_input()
+    # Then render the main content
+    home.render_main_content()
 
 if __name__ == "__main__":
     main()

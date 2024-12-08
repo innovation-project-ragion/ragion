@@ -50,9 +50,10 @@ accelerate>=0.25.0
 torch>=2.0.0
 bitsandbytes>=0.41.3
 
-paramiko>=3.4.0  # For SSH communication
-asyncssh>=2.13.2  # For async SSH operations
-python-multipart  # For file uploads in FastAPI
-aiofiles>=23.2.1  # For async file operations
+paramiko>=3.4.0  
+asyncssh>=2.13.2  
+python-multipart  
+aiofiles>=23.2.1  
 pylt
 py-localtunnel
+nest-asyncio
