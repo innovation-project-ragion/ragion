@@ -77,7 +77,6 @@ async def get_query_status(
                 detail=f"No job found with ID {job_id}"
             )
         
-        # Handle different status cases appropriately
         if result["status"] == "COMPLETED":
             if not isinstance(result.get("result"), dict):
                 logger.error(f"Invalid result format for job {job_id}: {result}")
@@ -141,7 +140,7 @@ async def healthcheck():
         "status": "ok",
         "timestamp": datetime.utcnow().isoformat()
     }
-# In your API endpoint or test script
+
 @router.get("/test")
 async def test_llm():
     job_manager = PuhtiJobManager()

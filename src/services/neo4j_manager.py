@@ -31,8 +31,6 @@ class EnhancedEmbeddingManager:
                 self.model_name,
                 cache_dir=self.cache_dir
             ).to(self.device)
-            
-            # Set model to evaluation mode
             self.model.eval()
             
             self.embedding_dim = self.model.config.hidden_size

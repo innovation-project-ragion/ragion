@@ -1,4 +1,3 @@
-# Document endpoints
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from src.models.document import DocumentResponse, ProcessedChunk
 from src.services.document_processor import DocumentProcessor
@@ -46,7 +45,7 @@ from src.core.config import settings
 router = APIRouter()
 logger = logging.getLogger(__name__)
 import asyncio
-# Dependency injection functions
+
 
 async def monitor_job_completion(
     job_id: str, 
@@ -60,12 +59,9 @@ async def monitor_job_completion(
             job_info = await job_manager.check_embedding_job(job_id)
             
             if job_info["status"] == "COMPLETED":
-                # Extract data
                 embeddings = job_info["embeddings"]
                 texts = job_info["texts"]
                 metadata = job_info["metadata"]
-                
-                # Verify embedding dimensions
                 if isinstance(embeddings, np.ndarray):
                     embedding_dim = embeddings.shape[1]
                 else:
@@ -73,7 +69,6 @@ async def monitor_job_completion(
                 
                 logger.info(f"Received embeddings with dimension: {embedding_dim}")
                 
-                # Check if dimensions match
                 if embedding_dim != settings.EMBEDDING_DIM:
                     logger.error(f"Dimension mismatch: expected {settings.EMBEDDING_DIM}, got {embedding_dim}")
                     raise ValueError(f"Embedding dimension mismatch")
@@ -138,7 +133,6 @@ async def upload_and_process_document(
 ):
     """Upload document and process it on Puhti, then store in both Milvus and Neo4j."""
     try:
-        # Save uploaded file temporarily
         temp_path = Path(f"/tmp/{file.filename}")
         with temp_path.open("wb") as f:
             content = await file.read()

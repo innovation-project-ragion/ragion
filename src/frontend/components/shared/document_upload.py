@@ -58,8 +58,6 @@ class DocumentUpload:
     def display_file_content(self, file):
         """Display the content of the selected file"""
         try:
-            # For demonstration, we'll just show text files
-            # In a real app, you'd want to handle different file types appropriately
             if file.name.endswith(".txt"):
                 content = file.read().decode("utf-8")
                 with st.expander(f"📄 {file.name}", expanded=True):

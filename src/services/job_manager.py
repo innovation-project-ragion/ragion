@@ -1,4 +1,3 @@
-## src/services/job_manager.py
 import asyncio
 import json
 import logging

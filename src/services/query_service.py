@@ -1,4 +1,3 @@
-# src/services/query_service.py
 from typing import Dict, List, Optional
 import logging
 from pathlib import Path
@@ -421,7 +420,7 @@ class QueryService:
                     "message": "Query completed successfully"
                 }
                 
-                # Clean up remote files
+                # Clean up remote files if needed uncomment this
                 #sftp.remove(str(remote_path))
                 #input_path = self.query_path / "inputs" / f"query_{job_id}.json"
                 #try:

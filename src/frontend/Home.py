@@ -53,25 +53,24 @@ class HomePage:
             st.subheader("⚙️ Chat Settings")
             
             # Model selection
-            st.selectbox(
-                "Select Model",
-                ["GPT-3.5", "GPT-4", "Claude", "Llama"],
-                key="selected_model"
-            )
+            # st.selectbox(
+            #     "Select Model",
+            #     ["GPT-3.5", "GPT-4", "Claude", "Llama"],
+            #     key="selected_model"
+            # )
             
             # Temperature slider
-            st.slider(
-                "Temperature",
-                min_value=0.0,
-                max_value=1.0,
-                value=0.7,
-                step=0.1,
-                key="temperature"
-            )
+            # st.slider(
+            #     "Temperature",
+            #     min_value=0.0,
+            #     max_value=1.0,
+            #     value=0.7,
+            #     step=0.1,
+            #     key="temperature"
+            # )
             
             st.divider()
             
-            # Chat controls
             st.subheader("💬 Chat Controls")
             col1, col2 = st.columns(2)
             with col1:
@@ -91,51 +90,6 @@ class HomePage:
                     st.session_state.is_processing = False
                     st.rerun()
 
-    # def render_main_content(self):
-    #     """Render the main chat interface"""
-    #     st.title("🤖 RAG Chat Assistant")
-        
-    #     # Show welcome message only when showing_welcome is True
-    #     if st.session_state.showing_welcome:
-    #         welcome_container = st.container()
-    #         with welcome_container:
-    #             st.markdown("""
-    #             👋 **Welcome to RAG Chat Assistant!**
-    #             """)
-                
-    #             if not st.session_state.get("uploaded_files"):
-    #                 st.info("👈 Please upload your documents in the sidebar to get started!")
-        
-    #     # Chat interface
-    #     st.divider()
-        
-    #     # Display chat history if it exists and the method is available
-    #     if hasattr(self.chat_interface, 'display_chat_history'):
-    #         self.chat_interface.display_chat_history()
-        
-    #     # Only show input if not currently processing
-    #     if not st.session_state.is_processing:
-    #         if prompt := st.chat_input("What would you like to know?"):
-    #             st.session_state.showing_welcome = False
-    #             st.session_state.is_processing = True
-    #             self.chat_interface.handle_user_input(prompt)
-    #     else:
-    #         # Show disabled input while processing
-    #         st.text_input(
-    #             "What would you like to know?", 
-    #             disabled=True, 
-    #             value="Processing your query... please wait"
-    #         )
-        
-    #     # Optional: Debug information in expandable section
-    #     if st.session_state.get("show_debug", False):
-    #         with st.expander("🔍 Debug Information", expanded=False):
-    #             st.write("Session State:")
-    #             st.json({
-    #                 "current_query_id": st.session_state.get("current_query_id"),
-    #                 "is_processing": st.session_state.is_processing,
-    #                 "showing_welcome": st.session_state.showing_welcome
-    #             })
     def render_main_content(self):
         """Render the main chat interface"""
         st.title("🤖 RAG Chat Assistant")
@@ -188,27 +142,21 @@ class HomePage:
                     ```
                     """)
         # === End of Hardcoded Test ===
-
-        # Existing Chat Interface Code
-        # Display chat history if it exists and the method is available
         if hasattr(self.chat_interface, 'display_chat_history'):
             self.chat_interface.display_chat_history()
-        
-        # Only show input if not currently processing
+
         if not st.session_state.is_processing:
             if prompt := st.chat_input("What would you like to know?"):
                 st.session_state.showing_welcome = False
                 st.session_state.is_processing = True
                 self.chat_interface.handle_user_input(prompt)
         else:
-            # Show disabled input while processing
+
             st.text_input(
                 "What would you like to know?", 
                 disabled=True, 
                 value="Processing your query... please wait"
             )
-        
-        # Optional: Debug information in expandable section
         if st.session_state.get("show_debug", False):
             with st.expander("🔍 Debug Information", expanded=False):
                 st.write("Session State:")
@@ -221,11 +169,7 @@ class HomePage:
 
 def main():
     home = HomePage()
-    
-    # Render the sidebar first
     home.render_sidebar()
-    
-    # Then render the main content
     home.render_main_content()
 
 if __name__ == "__main__":
