@@ -4,8 +4,6 @@ import sys
 import time
 from pathlib import Path
 import uuid
-
-# Add the project root to Python path
 root_path = Path(__file__).parent.parent.parent
 sys.path.append(str(root_path))
 
@@ -48,28 +46,7 @@ class HomePage:
             self.doc_upload.render_file_list()
             
             st.divider()
-            
-            # Chat settings
-            st.subheader("⚙️ Chat Settings")
-            
-            # Model selection
-            # st.selectbox(
-            #     "Select Model",
-            #     ["GPT-3.5", "GPT-4", "Claude", "Llama"],
-            #     key="selected_model"
-            # )
-            
-            # Temperature slider
-            # st.slider(
-            #     "Temperature",
-            #     min_value=0.0,
-            #     max_value=1.0,
-            #     value=0.7,
-            #     step=0.1,
-            #     key="temperature"
-            # )
-            
-            st.divider()
+              
             
             st.subheader("💬 Chat Controls")
             col1, col2 = st.columns(2)
@@ -107,41 +84,6 @@ class HomePage:
         
         # Divider for separating the welcome message from chat area
         st.divider()
-        
-        # === Hardcoded Test: Add This Block ===
-        st.markdown("### Testing Hardcoded Answer and Sources")
-        
-        # Hardcoded answer
-        hardcoded_answer = "Elisa on 66-vuotias. Luottamus: 95%"
-        
-        # Hardcoded sources
-        hardcoded_sources = [
-            {
-                "text": "Kansalaisuus: Suomi",
-                "document_id": "M2042",
-                "score": "95%"
-            },
-            {
-                "text": "Maakunta: ?",
-                "document_id": "KL-49",
-                "score": "85%"
-            }
-        ]
-        
-        # Display the hardcoded answer
-        st.markdown(f"**Answer:** {hardcoded_answer}")
-        
-        # Display the hardcoded sources
-        if hardcoded_sources:
-            with st.expander("📚 Sources", expanded=False):
-                for idx, source in enumerate(hardcoded_sources, 1):
-                    st.markdown(f"""
-                    **Source {idx}** (Document {source['document_id']}) - Relevance: {source['score']}
-                    ```
-                    {source['text']}
-                    ```
-                    """)
-        # === End of Hardcoded Test ===
         if hasattr(self.chat_interface, 'display_chat_history'):
             self.chat_interface.display_chat_history()
 

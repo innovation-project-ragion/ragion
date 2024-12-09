@@ -1,4 +1,3 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from src.models.document import DocumentResponse, ProcessedChunk
 from src.services.document_processor import DocumentProcessor
 from src.services.embedding_manager import EmbeddingManager as EnhancedEmbeddingManager
@@ -11,6 +10,15 @@ import numpy as np
 #from src.services.job_manager import submit_job_to_puhti
 #from src.services.job_script_generator import generate_batch_script
 from pathlib import Path
+from subprocess import run, CalledProcessError
+import os
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks
+from typing import Dict
+from src.services.job_manager import PuhtiJobManager
+from src.core.config import settings
+router = APIRouter()
+logger = logging.getLogger(__name__)
+import asyncio
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -34,17 +42,6 @@ async def get_neo4j_client():
 
 async def get_job_manager():
     return PuhtiJobManager()
-
-
-from subprocess import run, CalledProcessError
-import os
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks
-from typing import Dict
-from src.services.job_manager import PuhtiJobManager
-from src.core.config import settings
-router = APIRouter()
-logger = logging.getLogger(__name__)
-import asyncio
 
 
 async def monitor_job_completion(
@@ -160,4 +157,89 @@ async def upload_and_process_document(
         }
     except Exception as e:
         logger.error(f"Error processing document: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/status/{job_id}")
+async def get_document_status(
+    job_id: str,
+    job_manager: PuhtiJobManager = Depends(get_job_manager)
+):
+    """Get the status of a document processing job."""
+    try:
+        job_info = await job_manager.check_embedding_job(job_id)
+        return {
+            "status": job_info["status"],
+            "error": job_info.get("error", None)
+        }
+    except Exception as e:
+        logger.error(f"Error checking job status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/list")
+async def list_documents(
+    milvus_client: MilvusClient = Depends(get_milvus_client),
+    neo4j_client: Neo4jClient = Depends(get_neo4j_client)
+):
+    """Get list of all processed documents with their metadata."""
+    try:
+        # Get unique document IDs from Milvus
+        expr = "chunk_index == 0"  # Get only first chunks to avoid duplicates
+        results = milvus_client.collection.query(
+            expr=expr,
+            output_fields=["document_id", "person_name", "person_age"]
+        )
+        
+        documents = []
+        for result in results:
+            # Get document stats from Milvus
+            stats = milvus_client.get_document_stats(result["document_id"])
+            
+            # Get additional context from Neo4j
+            with neo4j_client.driver.session() as session:
+                context = session.run("""
+                    MATCH (d:Document {id: $doc_id})
+                    RETURN d.created_at as created_at
+                """, doc_id=result["document_id"]).single()
+                
+                created_at = context["created_at"] if context else None
+            
+            documents.append({
+                "document_id": result["document_id"],
+                "person_name": result["person_name"],
+                "person_age": result["person_age"],
+                "chunk_count": stats["chunk_count"],
+                "created_at": created_at
+            })
+        
+        return {"documents": documents}
+        
+    except Exception as e:
+        logger.error(f"Error listing documents: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{document_id}")
+async def delete_document(
+    document_id: str,
+    milvus_client: MilvusClient = Depends(get_milvus_client),
+    neo4j_client: Neo4jClient = Depends(get_neo4j_client)
+):
+    """Delete a document and its associated data from both databases."""
+    try:
+        # Delete from Milvus
+        expr = f'document_id == "{document_id}"'
+        milvus_client.collection.delete(expr)
+        
+        # Delete from Neo4j
+        with neo4j_client.driver.session() as session:
+            session.run("""
+                MATCH (d:Document)
+                WHERE d.id STARTS WITH $doc_id
+                DETACH DELETE d
+            """, doc_id=document_id)
+        
+        return {"message": f"Document {document_id} deleted successfully"}
+        
+    except Exception as e:
+        logger.error(f"Error deleting document: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
