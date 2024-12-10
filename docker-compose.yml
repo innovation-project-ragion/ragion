@@ -30,7 +30,7 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [ gpu ]
     networks:
       - app_network
 
@@ -146,38 +146,13 @@ services:
     networks:
       - app_network
 
-  # jupyter:
-  #   build:
-  #     context: .
-  #     dockerfile: jupyter/Dockerfile
-  #   image: jupyter/datascience-notebook:latest
-  #   container_name: jupyter
-  #   ports:
-  #     - "8888:8888"
-  #   environment:
-  #     - JUPYTER_ENABLE_LAB=yes
-  #     - JUPYTER_TOKEN=${JUPYTER_TOKEN}
-  #   volumes:
-  #     - .:/home/jovyan/work
-  #   runtime: nvidia
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         devices:
-  #           - driver: nvidia
-  #             count: 1
-  #             capabilities: [gpu]
-  #   networks:
-  #     - app_network
-  
-
 volumes:
   neo4j_data:
   etcd_data:
   minio_data:
   milvus_data:
   attu_data:
-  # jupyter_data:
+
 
 networks:
   app_network:
