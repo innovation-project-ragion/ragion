@@ -1,70 +1,201 @@
-# 📁 src/frontend/components/chat/chat_interface.py
+## src/frontend/components/chat/chat_interface.py
 import streamlit as st
-from typing import List, Dict, Callable
+from typing import Dict, Optional, List
+import asyncio
+import json
 import time
+import logging
+import sys
+import re
+from datetime import datetime
+from src.frontend.utils.api_client import RAGApiClient
+
+# Configure root logger
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - [%(name)s] - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+logger = logging.getLogger("frontend.chat")
+logger.setLevel(logging.DEBUG)
 
 class ChatInterface:
     def __init__(self):
-        # Initialize chat history in session state if not exists
+        self.initialize_session_state()
+        self.timeout = 300
+        self.max_retries = 3
+        self.max_source_length = 200
+
+    def initialize_session_state(self):
+        """Initialize all required session state variables."""
         if "messages" not in st.session_state:
             st.session_state.messages = []
+        if "debug_enabled" not in st.session_state:
+            st.session_state.debug_enabled = False
+        if "is_processing" not in st.session_state:
+            st.session_state.is_processing = False
 
-    def display_message(self, message: Dict[str, str]):
-        """Display a single message in the chat interface"""
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    def _clean_answer(self, answer: str) -> str:
+        """Clean up duplicated content and format the answer."""
+        if not answer:
+            return ""
+            
+        # Split on first occurrence of "Luottamus:"
+        main_answer = answer.split("Luottamus:")[0].strip()
+        
+        # If there's a confidence part, add it back once
+        if "Luottamus:" in answer:
+            confidence_part = "Luottamus:" + answer.split("Luottamus:")[1].split(".")[0] + "."
+            main_answer = f"{main_answer} {confidence_part}"
+            
+        return main_answer
 
-    def display_chat_history(self):
-        """Display all messages in the chat history"""
-        for message in st.session_state.messages:
-            self.display_message(message)
+    async def _process_query_async(self, query: str) -> None:
+        async with RAGApiClient() as client:
+            try:
+                with st.chat_message("assistant"):
+                    message_placeholder = st.empty()
+                    
+                    with message_placeholder:
+                        st.markdown("```\nProcessing query...\n```")
+                    
+                    response = await client.submit_query(query)
+                    
+                    if response and response.get("status") == "processing":
+                        job_id = response.get("job_id")
+                        if not job_id:
+                            raise Exception("No job ID received from backend")
+                        
+                        while True:
+                            status_response = await client.check_query_status(job_id)
+                            
+                            if status_response.get("status") == "completed":
+                                logger.info("-" * 80)
+                                logger.info("RESPONSE RECEIVED")
+                                
+                                # Clear placeholder
+                                message_placeholder.empty()
+                                
+                                # Process and render response
+                                formatted_response = self._format_response(status_response)
+                                logger.debug(f"Original answer before cleaning: {formatted_response['answer']}")
+                                
+                                cleaned_answer = self._clean_answer(formatted_response["answer"])
+                                logger.debug(f"Cleaned answer: {cleaned_answer}")
+                                
+                                # Render the cleaned answer
+                                message_placeholder.markdown(cleaned_answer)
+                                
+                                # Render sources
+                                if formatted_response["sources"]:
+                                    with st.expander("📚 Sources", expanded=False):
+                                        for idx, source in enumerate(formatted_response["sources"], 1):
+                                            st.markdown(f"""
+                                            **Source {idx}** (Document {source['document_id']}) - Relevance: {source['score']}
+                                            ```
+                                            {source['text'][:self.max_source_length]}...
+                                            ```
+                                            """)
+                                
+                                # Update session state
+                                st.session_state.messages.append({
+                                    "role": "assistant",
+                                    "content": cleaned_answer,
+                                    "sources": formatted_response["sources"],
+                                    "timestamp": datetime.now().strftime("%H:%M:%S")
+                                })
+                                logger.debug(f"Updated session state: {st.session_state.messages}")
+                                break
+                            
+                            elif status_response.get("status") == "failed":
+                                error_msg = status_response.get("error", "Unknown error")
+                                raise Exception(error_msg)
+                            
+                            await asyncio.sleep(1)
+                    else:
+                        raise Exception(f"Unexpected response status: {response.get('status')}")
+                        
+            except Exception as e:
+                logger.error(f"Error processing query: {str(e)}", exc_info=True)
+                message_placeholder.error(f"❌ Error: {str(e)}")
 
-    def handle_user_input(self, callback_fn: Callable):
-        """Handle user input and process it through the callback function"""
-        # Get user input
-        if prompt := st.chat_input("What would you like to know?"):
-            # Add user message to chat history
-            user_message = {"role": "user", "content": prompt}
-            st.session_state.messages.append(user_message)
 
-            # Display user message
-            with st.chat_message("user"):
-                st.markdown(prompt)
+    def _format_response(self, response_data: dict) -> dict:
+        """Format the response data into a structured format."""
+        try:
+            if response_data.get("status") == "completed" and "result" in response_data:
+                answer = response_data["result"].get("answer", "")
+                sources = response_data["result"].get("sources", [])
+            else:
+                answer = response_data.get("response", "")
+                sources = response_data.get("sources", [])
 
-            # Display assistant response with streaming
-            with st.chat_message("assistant"):
-                message_placeholder = st.empty()
-                full_response = ""
-                
-                # Process the message and get streaming response
-                for response_chunk in self._stream_response(prompt, callback_fn):
-                    full_response += response_chunk
-                    # Add a blinking cursor to simulate typing
-                    message_placeholder.markdown(full_response + "▌")
-                
-                # Remove the cursor and display the final response
-                message_placeholder.markdown(full_response)
-                
-                # Add assistant response to chat history
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": full_response
+            formatted_sources = []
+            for source in sources:
+                formatted_sources.append({
+                    "text": source.get("text", ""),
+                    "document_id": source.get("document_id", "Unknown"),
+                    "score": f"{float(source.get('score', 0)):.2%}"
                 })
 
-    def _stream_response(self, prompt: str, callback_fn: Callable):
-        """Stream the response from the callback function"""
-        model = st.session_state.get("selected_model", "GPT-3.5")
-        temperature = st.session_state.get("temperature", 0.7)
-        
-        # Generate the full response
-        full_response = f"Model: {model} (temp={temperature})\nThis is a mock response to: {prompt}"
-        
-        # Stream the response word by word
-        words = full_response.split()
-        for i, word in enumerate(words):
-            yield word + (" " if i < len(words) - 1 else "")
-            time.sleep(0.05)  # Reduced delay for better UX
+            return {
+                "answer": answer,
+                "sources": formatted_sources
+            }
+        except Exception as e:
+            logger.error(f"Error formatting response: {str(e)}", exc_info=True)
+            return {"answer": "Error formatting response", "sources": []}
+
+    def handle_user_input(self, prompt: str):
+        """Handle user input and process it through the RAG pipeline."""
+        try:
+            # Store user message
+            st.session_state.messages.append({
+                "role": "user",
+                "content": prompt,
+                "timestamp": datetime.now().strftime("%H:%M:%S")
+            })
+            
+            # Display user message
+            with st.chat_message("user"):
+                st.write(prompt)
+            
+            # Set processing state
+            st.session_state.is_processing = True
+            
+            # Create new event loop and run async process
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(self._process_query_async(prompt))
+            finally:
+                loop.close()
+                st.session_state.is_processing = False
+            
+        except Exception as e:
+            logger.error(f"Error handling user input: {str(e)}", exc_info=True)
+            st.error(f"❌ Error: {str(e)}")
+            st.session_state.is_processing = False
+
+    def display_chat_history(self):
+        """Display the chat history."""
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+                
+                if message["role"] == "assistant" and "sources" in message:
+                    with st.expander("📚 Sources", expanded=False):
+                        for idx, source in enumerate(message["sources"], 1):
+                            st.markdown(f"""
+                            **Source {idx}** (Document {source['document_id']}) - Relevance: {source['score']}
+                            ```
+                            {source['text'][:self.max_source_length]}...
+                            ```
+                            """)
 
     def clear_chat_history(self):
-        """Clear the chat history"""
+        """Clear the chat history."""
         st.session_state.messages = []

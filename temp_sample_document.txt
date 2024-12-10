@@ -1,0 +1,3 @@
+Sample text for embedding generation and Milvus-Neo4j integration testing.
+This is the second chunk of the document.
+Another chunk for testing purposes.

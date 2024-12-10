@@ -20,3 +20,14 @@ docker-compose.yml
 *.md
 *.log
 *.swp
+__pycache__
+
+## models folder
+models/*
+!models/__init__.py
+
+# result folder
+result/*
+
+# llm folder
+hugging_face_models/*

@@ -1,30 +1,24 @@
-# Core RAG Dependencies
-pymilvus==2.4.7
+# Core dependencies
+pymilvus==2.4.8
 neo4j
-transformers==4.31.0
-librosa==0.10.0
-torch==2.0.1
+python-dotenv==1.0.0
+python-docx
+nltk
+httpx
+# FastAPI and server dependencies
 fastapi==0.100.0
 uvicorn==0.22.0
 pydantic>=2.3.0
-pytest==7.4.0
-pytest-cov==4.1.0
-python-dotenv==1.0.0
-pydantic-settings==2.1.0
+
+# LangChain and related
 langchain
-ollama==0.3.2
-pypdf
-langchainhub
-jina
 langchain-community
-langchain-experimental
-python-docx
-nltk
+
+# Machine Learning and NLP
 numpy
-seaborn
-transformers
-torch
-numba
+
+# Utilities
+tqdm
 setuptools==70.0.0
 
 # Authentication & Security
@@ -43,3 +37,23 @@ python-magic
 python-multipart 
 streamlit-chat
 requests
+requests
+
+# Testing
+pytest==7.4.0
+pytest-cov==4.1.0
+
+# Hugging Face
+huggingface-hub>=0.19.0
+transformers>=4.36.0
+accelerate>=0.25.0
+torch>=2.0.0
+bitsandbytes>=0.41.3
+
+paramiko>=3.4.0  
+asyncssh>=2.13.2  
+python-multipart  
+aiofiles>=23.2.1  
+pylt
+py-localtunnel
+nest-asyncio

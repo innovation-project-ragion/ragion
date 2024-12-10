@@ -2,6 +2,9 @@
 
 # Default settings for FastAPI
 DEFAULT_MODULE_NAME="src.backend.main"
+# Default application module and variables
+DEFAULT_MODULE_NAME="src.main"
+
 MODULE_NAME=${MODULE_NAME:-$DEFAULT_MODULE_NAME}
 VARIABLE_NAME=${VARIABLE_NAME:-app}
 export APP_MODULE=${APP_MODULE:-"$MODULE_NAME:$VARIABLE_NAME"}
