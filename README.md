@@ -1,5 +1,7 @@
 # Multimodal RAG Application
 
+![workflow](img/workflowRagion.png)
+
 This project is a Retrieval-Augmented Generation (RAG) application built with FastAPI. The application leverages Milvus for vector storage, Neo4j for knowledge graphs, and integrates with a large language model (LLM) to provide multimodal capabilities.
 
 ## Table of Contents
@@ -7,6 +9,7 @@ This project is a Retrieval-Augmented Generation (RAG) application built with Fa
 - [Introduction](#introduction)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Workflow](#workflow)
 - [Usage](#usage)
 - [Running Tests](#running-tests)
 - [License](#license)
@@ -61,6 +64,92 @@ Follow these steps to set up and run the application:
     Neo4j’s web interface is available at `http://localhost:7474`. The default login credentials are:
     - Username: `neo4j`
     - Password: `test`
+
+## Architecture and Workflow
+
+![Application Structure](img/applicationStructure.png)
+
+The system is divided into three main components that work together to process documents and answer queries:
+
+### 1. Client Interaction Layer
+
+The client interface handles two primary operations:
+- **Document Upload**: Users can upload trustworthy materials (e.g., interview transcripts, observations, research data)
+- **Query Submission**: Users can ask questions about the uploaded content
+
+### 2. Local System (FastAPI)
+
+The FastAPI server manages the core processing pipeline:
+
+#### Document Processing Flow
+1. **API Endpoint** receives uploaded documents
+2. **Document Processor**:
+   - Validates and preprocesses documents
+   - Extracts relevant information
+   - Prepares content for embedding generation
+
+3. **Embedding Generator**:
+   - Creates vector representations of documents
+   - Handles query embedding generation
+   - Interfaces with Milvus for storage
+
+4. **Database Integration**:
+   - **Neo4j Graph DB**: Stores document relationships and metadata
+   - **Milvus Vector DB**: Manages document and query embeddings
+
+5. **Context Preparation**:
+   - Retrieves relevant context based on query similarity
+   - Combines information from both databases
+   - Prepares consolidated context for LLM processing
+
+### 3. Puhti HPC (High-Performance Computing)
+
+The supercomputer environment handles computationally intensive tasks:
+
+#### Document Processing on HPC
+1. **Document Input Directory**:
+   - Receives preprocessed documents
+   - Manages document queue for processing
+
+2. **Document Embedding Generator**:
+   - Generates high-quality embeddings using GPU acceleration
+   - Utilizes TurkuNLP and Hugging Face models
+   - Returns embeddings for storage in Milvus
+
+#### Query Processing on HPC
+1. **Input Directory** (`/rag_queries/inputs/`):
+   - Receives queries with relevant context
+   - Prepares input for LLM processing 
+
+2. **GPU Job (LLM)**:
+   - Runs Finnish-NLP/llama-7b-finnish-instruct-v0.2 model
+   - Processes queries with context
+   - Generates responses (2-3 minutes on supercomputer)
+
+3. **Output Directory** (`/rag_queries/outputs/`):
+   - Stores generated responses
+   - Makes them available for retrieval
+
+### Complete Workflow Example
+
+Using the sheltered accommodation use case as an example:
+
+1. **Document Ingestion**:
+   - Staff uploads resident interview transcripts
+   - Documents are processed and embedded
+   - Knowledge is stored in Neo4j and Milvus
+
+2. **Query Processing**:
+   - User asks about resident experiences
+   - System generates query embedding
+   - Relevant interview segments are retrieved
+   - Context is prepared with related information
+
+3. **Response Generation**:
+   - Query and context are sent to HPC
+   - LLM processes the information
+   - Response is generated based on actual resident feedback
+   - Answer is returned to user (2-3 minutes on supercomputer)
 
 ## Usage
 
